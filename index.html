@@ -260,18 +260,22 @@
   // ---------- ASSETS (embedded) ----------
   const GOAT_SRC  = 'assets/goat.png';
   const KNIFE_SRC = 'assets/knife.png';
+  const STEAK_SRC = 'assets/steak.png';
 
-  const goatImg = new Image();
+  const goatImg  = new Image();
   const knifeImg = new Image();
+  const steakImg = new Image();
   let assetsLoaded = 0;
   const onLoad = () => {
     assetsLoaded++;
-    if (assetsLoaded === 2) start();
+    if (assetsLoaded === 3) start();
   };
-  goatImg.onload = onLoad;
+  goatImg.onload  = onLoad;
   knifeImg.onload = onLoad;
-  goatImg.src = GOAT_SRC;
+  steakImg.onload = onLoad;
+  goatImg.src  = GOAT_SRC;
   knifeImg.src = KNIFE_SRC;
+  steakImg.src = STEAK_SRC;
 
   // ---------- CANVAS SETUP ----------
   const canvas = document.getElementById('game');
@@ -331,6 +335,10 @@
   // Hitbox is tighter than the visual to feel fair
   const KNIFE_HITBOX_W = 36;
 
+  const STEAK_DRAW = 38;   // draw size (square)
+  const STEAK_HIT  = 28;   // collect hitbox size
+  const STEAK_EVERY = 20;  // steak appears every N knives scored
+
   // Goat draw size (keep aspect ratio of the image)
   const GOAT_DRAW_W = 78;
   const GOAT_DRAW_H = 62;
@@ -368,7 +376,7 @@
     const minY = PIPE_MIN_TOP;
     const maxY = GROUND_TOP - PIPE_MIN_BOT - PIPE_GAP;
     const gapY = minY + Math.random() * (maxY - minY);
-    pipes.push({ x, gapY, scored: false });
+    pipes.push({ x, gapY, scored: false, hasSteak: false, steakCollected: false });
   }
 
   // Generate some lazy clouds
@@ -483,6 +491,11 @@
           p.scored = true;
           score++;
           updateScoreText();
+          // Tag next upcoming pipe with a steak every STEAK_EVERY knives
+          if (score % STEAK_EVERY === 0) {
+            const next = pipes.find(np => !np.scored && np.x > goat.x);
+            if (next) { next.hasSteak = true; next.steakCollected = false; }
+          }
         }
       });
 
@@ -517,6 +530,19 @@
         if (gT < p.gapY) { gameOver(); return; }
         // bottom knife hitbox: from gapY+PIPE_GAP down
         if (gB > p.gapY + PIPE_GAP) { gameOver(); return; }
+      }
+
+      // Steak collection
+      const half = STEAK_HIT / 2;
+      for (const p of pipes) {
+        if (!p.hasSteak || p.steakCollected) continue;
+        const sx = p.x + PIPE_W / 2;
+        const sy = p.gapY + PIPE_GAP / 2;
+        if (gR > sx - half && gL < sx + half && gB > sy - half && gT < sy + half) {
+          p.steakCollected = true;
+          score += 5;
+          updateScoreText();
+        }
       }
     }
 
@@ -625,6 +651,13 @@
     ctx.fillStyle = 'rgba(255,255,255,.55)';
     ctx.fillRect(x + PIPE_W * 0.45, p.gapY - 6, 4, 4);
     ctx.fillRect(x + PIPE_W * 0.45, p.gapY + PIPE_GAP + 2, 4, 4);
+
+    // Steak collectible floating in gap center
+    if (p.hasSteak && !p.steakCollected) {
+      const sx = x + PIPE_W / 2;
+      const sy = p.gapY + PIPE_GAP / 2 + Math.sin(bobT * 0.003) * 5;
+      ctx.drawImage(steakImg, sx - STEAK_DRAW / 2, sy - STEAK_DRAW / 2, STEAK_DRAW, STEAK_DRAW);
+    }
   }
 
   function drawPipes() {
