@@ -362,6 +362,7 @@
   let pipes = [];   // {x, gapY, scored}
   let clouds = [];  // {x,y,scale,speed}
   let stars = [];   // {x,y,r} — generated once, used in night mode
+  let trees = [];   // {x,scale,type}
   let groundOffset = 0;
   let bobT = 0;     // for idle bob in ready state
   let nightT = 0;      // 0 = full day, 1 = full night
@@ -393,6 +394,17 @@
     const maxY = GROUND_TOP - PIPE_MIN_BOT - PIPE_GAP;
     const gapY = minY + Math.random() * (maxY - minY);
     pipes.push({ x, gapY, scored: false, hasSteak: false, steakCollected: false });
+  }
+
+  function initTrees() {
+    trees = [];
+    for (let i = 0; i < 7; i++) {
+      trees.push({
+        x: (W / 6) * i + Math.random() * 30,
+        scale: 0.55 + Math.random() * 0.55,
+        type: Math.random() < 0.35 ? 'bush' : 'tall',
+      });
+    }
   }
 
   // Generate some lazy clouds
@@ -492,6 +504,7 @@
       // ground & clouds still drift
       groundOffset = (groundOffset + PIPE_SPEED * 0.5) % 40;
       clouds.forEach(c => { c.x -= c.speed; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
+      trees.forEach(t => { t.x -= PIPE_SPEED * 0.45; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
       return;
     }
 
@@ -525,6 +538,9 @@
 
       // Clouds
       clouds.forEach(c => { c.x -= c.speed; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
+
+      // Trees
+      trees.forEach(t => { t.x -= PIPE_SPEED * 0.45; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
 
       // Ground scroll
       groundOffset = (groundOffset + PIPE_SPEED) % 40;
@@ -610,26 +626,75 @@
   }
 
   // ---------- DRAW ----------
+
+  function drawTree(tx, scale, type) {
+    const nt = nightT;
+    // Interpolate day green/brown → near-black night silhouettes
+    function lc(dr,dg,db, nr,ng,nb) {
+      return `rgb(${~~(dr+(nr-dr)*nt)},${~~(dg+(ng-dg)*nt)},${~~(db+(nb-db)*nt)})`;
+    }
+    const cTrunk  = lc(122,74,40,  20,10, 4);
+    const cShade  = lc( 55,98,22,   8,18, 4);
+    const cMid    = lc( 70,124,32,  12,24, 6);
+    const cBright = lc( 86,152,40,  16,30, 8);
+    const cTop    = lc(108,180,52,  20,38,10);
+
+    ctx.save();
+    ctx.translate(tx, GROUND_TOP);
+    ctx.scale(scale, scale);
+
+    if (type === 'bush') {
+      ctx.fillStyle = cTrunk;
+      ctx.fillRect(-4, -18, 8, 18);
+      ctx.fillStyle = cShade;
+      ctx.fillRect(-24, -36, 48, 14);
+      ctx.fillStyle = cMid;
+      ctx.fillRect(-20, -50, 40, 16);
+      ctx.fillStyle = cBright;
+      ctx.fillRect(-14, -60, 28, 12);
+      ctx.fillStyle = cTop;
+      ctx.fillRect(-8, -68, 16, 10);
+    } else {
+      ctx.fillStyle = cTrunk;
+      ctx.fillRect(-5, -42, 10, 42);
+      ctx.fillStyle = cShade;
+      ctx.fillRect(-22, -58, 44, 16);
+      ctx.fillStyle = cMid;
+      ctx.fillRect(-18, -72, 36, 16);
+      ctx.fillRect(-14, -84, 28, 14);
+      ctx.fillStyle = cBright;
+      ctx.fillRect(-10, -94, 20, 12);
+      ctx.fillStyle = cTop;
+      ctx.fillRect(-6, -104, 12, 12);
+    }
+
+    ctx.restore();
+  }
+
+  function drawTrees() {
+    for (const t of trees) drawTree(t.x, t.scale, t.type);
+  }
+
   function drawSky() {
-    // Day sky (always drawn as base)
+    // Day sky — bright yellow (always drawn as base)
     const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
-    g.addColorStop(0,    '#ffc7a0');
-    g.addColorStop(0.45, '#ffb088');
-    g.addColorStop(1,    '#ffe7c2');
+    g.addColorStop(0,   '#ffd000');
+    g.addColorStop(0.5, '#ffcf00');
+    g.addColorStop(1,   '#ffe040');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, GROUND_TOP);
 
     // Sun (fades out as night arrives)
     ctx.globalAlpha = 1 - nightT;
-    const sx = W * 0.78, sy = 110;
-    const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 140);
-    sun.addColorStop(0, 'rgba(255,255,220,.85)');
-    sun.addColorStop(0.5, 'rgba(255,210,160,.35)');
-    sun.addColorStop(1, 'rgba(255,210,160,0)');
+    const sx = W * 0.78, sy = 80;
+    const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 110);
+    sun.addColorStop(0,   'rgba(255,255,255,.95)');
+    sun.addColorStop(0.4, 'rgba(255,255,200,.40)');
+    sun.addColorStop(1,   'rgba(255,255,180,0)');
     ctx.fillStyle = sun;
     ctx.fillRect(0, 0, W, GROUND_TOP);
-    ctx.fillStyle = '#fff4d0';
-    ctx.beginPath(); ctx.arc(sx, sy, 28, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
 
     // Night sky overlay (fades in)
@@ -733,24 +798,24 @@
   // Scrolling pixel ground
   function drawGround() {
     // dirt body
-    ctx.fillStyle = '#d97a4a';
+    ctx.fillStyle = '#8b5e3c';
     ctx.fillRect(0, GROUND_TOP, W, GROUND_H);
     // grass strip
-    ctx.fillStyle = '#f4b58a';
+    ctx.fillStyle = '#4a8c2a';
     ctx.fillRect(0, GROUND_TOP, W, 16);
     // top grass tufts (scrolling)
-    ctx.fillStyle = '#b34a1f';
+    ctx.fillStyle = '#3a6e1e';
     for (let x = -groundOffset; x < W; x += 20) {
-      ctx.fillRect(x, GROUND_TOP + 10, 10, 4);
+      ctx.fillRect(x, GROUND_TOP + 10, 10, 5);
     }
     // pixel rocks scattered (scrolling)
-    ctx.fillStyle = '#a13d18';
+    ctx.fillStyle = '#6e4828';
     for (let x = -groundOffset * 2; x < W; x += 60) {
-      ctx.fillRect(x + 8, GROUND_TOP + 36, 8, 6);
+      ctx.fillRect(x + 8,  GROUND_TOP + 36, 8, 6);
       ctx.fillRect(x + 32, GROUND_TOP + 56, 6, 4);
     }
     // top edge highlight
-    ctx.fillStyle = 'rgba(255,255,255,.35)';
+    ctx.fillStyle = 'rgba(255,255,255,.25)';
     ctx.fillRect(0, GROUND_TOP, W, 2);
   }
 
@@ -779,6 +844,7 @@
   function draw() {
     ctx.clearRect(0, 0, W, H);
     drawSky();
+    drawTrees();
     drawClouds();
     drawPipes();
     drawGround();
@@ -798,6 +864,7 @@
   function start() {
     resize();
     initClouds();
+    initTrees();
     initStars();
     reset();
     setScreen('ready', true);
