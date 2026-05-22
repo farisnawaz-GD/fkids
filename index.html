@@ -361,10 +361,20 @@
   let goat = { x: 110, y: H * 0.45, vy: 0, rot: 0, flap: 0 };
   let pipes = [];   // {x, gapY, scored}
   let clouds = [];  // {x,y,scale,speed}
+  let stars = [];   // {x,y,r} — generated once, used in night mode
   let groundOffset = 0;
   let bobT = 0;     // for idle bob in ready state
+  let nightMode = false;
+
+  function initStars() {
+    stars = [];
+    for (let i = 0; i < 40; i++) {
+      stars.push({ x: Math.random() * W, y: Math.random() * (GROUND_TOP * 0.75), r: Math.random() * 1.5 + 0.5 });
+    }
+  }
 
   function reset() {
+    nightMode = false;
     goat = { x: 110, y: H * 0.45, vy: 0, rot: 0, flap: 0 };
     pipes = [];
     spawnPipe(W + 80);
@@ -422,7 +432,9 @@
     flap();
   }
   window.addEventListener('pointerdown', onPointer, { passive: false });
-  document.addEventListener('touchend', e => e.preventDefault(), { passive: false });
+  document.addEventListener('touchend', e => {
+    if (!e.target.closest('.btn')) e.preventDefault();
+  }, { passive: false });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
       e.preventDefault();
@@ -501,6 +513,7 @@
             const next = pipes.find(np => !np.scored && np.x > goat.x);
             if (next) { next.hasSteak = true; next.steakCollected = false; next.steakType = Math.random() < 0.5 ? 'steak' : 'bbq'; }
           }
+          if (score % 20 === 0) nightMode = !nightMode;
         }
       });
 
@@ -592,24 +605,53 @@
 
   // ---------- DRAW ----------
   function drawSky() {
-    const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
-    g.addColorStop(0,    '#ffc7a0');
-    g.addColorStop(0.45, '#ffb088');
-    g.addColorStop(1,    '#ffe7c2');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, GROUND_TOP);
-
-    // soft sun glow
-    const sx = W * 0.78, sy = 110;
-    const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 140);
-    sun.addColorStop(0, 'rgba(255,255,220,.85)');
-    sun.addColorStop(0.5, 'rgba(255,210,160,.35)');
-    sun.addColorStop(1, 'rgba(255,210,160,0)');
-    ctx.fillStyle = sun;
-    ctx.fillRect(0, 0, W, GROUND_TOP);
-    // sun disc
-    ctx.fillStyle = '#fff4d0';
-    ctx.beginPath(); ctx.arc(sx, sy, 28, 0, Math.PI * 2); ctx.fill();
+    if (nightMode) {
+      // Night sky
+      const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
+      g.addColorStop(0,   '#05051e');
+      g.addColorStop(0.5, '#0d0d3a');
+      g.addColorStop(1,   '#1a0f2e');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, GROUND_TOP);
+      // stars
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      for (const s of stars) {
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+      }
+      // moon glow
+      const mx = W * 0.78, my = 90;
+      const moonGlow = ctx.createRadialGradient(mx, my, 0, mx, my, 80);
+      moonGlow.addColorStop(0, 'rgba(220,220,180,.25)');
+      moonGlow.addColorStop(1, 'rgba(220,220,180,0)');
+      ctx.fillStyle = moonGlow;
+      ctx.fillRect(0, 0, W, GROUND_TOP);
+      // moon disc
+      ctx.fillStyle = '#f0f0d0';
+      ctx.beginPath(); ctx.arc(mx, my, 26, 0, Math.PI * 2); ctx.fill();
+      // crater details
+      ctx.fillStyle = 'rgba(160,160,120,0.45)';
+      ctx.beginPath(); ctx.arc(mx + 8, my - 6, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(mx - 8, my + 8, 4, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Day sky
+      const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
+      g.addColorStop(0,    '#ffc7a0');
+      g.addColorStop(0.45, '#ffb088');
+      g.addColorStop(1,    '#ffe7c2');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, GROUND_TOP);
+      // soft sun glow
+      const sx = W * 0.78, sy = 110;
+      const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 140);
+      sun.addColorStop(0, 'rgba(255,255,220,.85)');
+      sun.addColorStop(0.5, 'rgba(255,210,160,.35)');
+      sun.addColorStop(1, 'rgba(255,210,160,0)');
+      ctx.fillStyle = sun;
+      ctx.fillRect(0, 0, W, GROUND_TOP);
+      // sun disc
+      ctx.fillStyle = '#fff4d0';
+      ctx.beginPath(); ctx.arc(sx, sy, 28, 0, Math.PI * 2); ctx.fill();
+    }
   }
 
   // Chunky pixel cloud (rectangles, no anti-alias feel)
@@ -617,7 +659,7 @@
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(scale, scale);
-    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.fillStyle = nightMode ? 'rgba(160,160,200,.25)' : 'rgba(255,255,255,.92)';
     // body of cloud — a few overlapping pixel rects
     const blocks = [
       [-26,-6,52,14],
@@ -738,6 +780,7 @@
   function start() {
     resize();
     initClouds();
+    initStars();
     reset();
     setScreen('ready', true);
     setScoreVisible(false);
