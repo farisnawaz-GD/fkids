@@ -422,6 +422,7 @@
     flap();
   }
   window.addEventListener('pointerdown', onPointer, { passive: false });
+  document.addEventListener('touchend', e => e.preventDefault(), { passive: false });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
       e.preventDefault();
