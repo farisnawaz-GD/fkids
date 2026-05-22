@@ -364,7 +364,8 @@
   let stars = [];   // {x,y,r} — generated once, used in night mode
   let groundOffset = 0;
   let bobT = 0;     // for idle bob in ready state
-  let nightMode = false;
+  let nightT = 0;      // 0 = full day, 1 = full night
+  let nightTarget = 0; // toggles between 0 and 1
 
   function initStars() {
     stars = [];
@@ -374,7 +375,8 @@
   }
 
   function reset() {
-    nightMode = false;
+    nightT = 0;
+    nightTarget = 0;
     goat = { x: 110, y: H * 0.45, vy: 0, rot: 0, flap: 0 };
     pipes = [];
     spawnPipe(W + 80);
@@ -478,6 +480,10 @@
   // ---------- UPDATE ----------
   function update(dt) {
     bobT += dt;
+    // Smooth day/night blend (~1.7s full transition)
+    const ns = dt * 0.0006;
+    if (nightTarget > nightT) nightT = Math.min(nightT + ns, nightTarget);
+    else nightT = Math.max(nightT - ns, nightTarget);
 
     if (state === 'ready') {
       // Idle bob
@@ -513,7 +519,7 @@
             const next = pipes.find(np => !np.scored && np.x > goat.x);
             if (next) { next.hasSteak = true; next.steakCollected = false; next.steakType = Math.random() < 0.5 ? 'steak' : 'bbq'; }
           }
-          if (score % 20 === 0) nightMode = !nightMode;
+          if (score % 20 === 0) nightTarget = 1 - nightTarget;
         }
       });
 
@@ -605,52 +611,59 @@
 
   // ---------- DRAW ----------
   function drawSky() {
-    if (nightMode) {
-      // Night sky
-      const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
-      g.addColorStop(0,   '#05051e');
-      g.addColorStop(0.5, '#0d0d3a');
-      g.addColorStop(1,   '#1a0f2e');
-      ctx.fillStyle = g;
+    // Day sky (always drawn as base)
+    const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
+    g.addColorStop(0,    '#ffc7a0');
+    g.addColorStop(0.45, '#ffb088');
+    g.addColorStop(1,    '#ffe7c2');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, GROUND_TOP);
+
+    // Sun (fades out as night arrives)
+    ctx.globalAlpha = 1 - nightT;
+    const sx = W * 0.78, sy = 110;
+    const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 140);
+    sun.addColorStop(0, 'rgba(255,255,220,.85)');
+    sun.addColorStop(0.5, 'rgba(255,210,160,.35)');
+    sun.addColorStop(1, 'rgba(255,210,160,0)');
+    ctx.fillStyle = sun;
+    ctx.fillRect(0, 0, W, GROUND_TOP);
+    ctx.fillStyle = '#fff4d0';
+    ctx.beginPath(); ctx.arc(sx, sy, 28, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Night sky overlay (fades in)
+    if (nightT > 0) {
+      ctx.globalAlpha = nightT;
+      const ng = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
+      ng.addColorStop(0,   '#05051e');
+      ng.addColorStop(0.5, '#0d0d3a');
+      ng.addColorStop(1,   '#1a0f2e');
+      ctx.fillStyle = ng;
       ctx.fillRect(0, 0, W, GROUND_TOP);
-      // stars
+
+      // Stars
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
       for (const s of stars) {
         ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
       }
-      // moon glow
+
+      // Moon glow
       const mx = W * 0.78, my = 90;
       const moonGlow = ctx.createRadialGradient(mx, my, 0, mx, my, 80);
       moonGlow.addColorStop(0, 'rgba(220,220,180,.25)');
       moonGlow.addColorStop(1, 'rgba(220,220,180,0)');
       ctx.fillStyle = moonGlow;
       ctx.fillRect(0, 0, W, GROUND_TOP);
-      // moon disc
+      // Moon disc
       ctx.fillStyle = '#f0f0d0';
       ctx.beginPath(); ctx.arc(mx, my, 26, 0, Math.PI * 2); ctx.fill();
-      // crater details
+      // Craters
       ctx.fillStyle = 'rgba(160,160,120,0.45)';
       ctx.beginPath(); ctx.arc(mx + 8, my - 6, 7, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(mx - 8, my + 8, 4, 0, Math.PI * 2); ctx.fill();
-    } else {
-      // Day sky
-      const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
-      g.addColorStop(0,    '#ffc7a0');
-      g.addColorStop(0.45, '#ffb088');
-      g.addColorStop(1,    '#ffe7c2');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, GROUND_TOP);
-      // soft sun glow
-      const sx = W * 0.78, sy = 110;
-      const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 140);
-      sun.addColorStop(0, 'rgba(255,255,220,.85)');
-      sun.addColorStop(0.5, 'rgba(255,210,160,.35)');
-      sun.addColorStop(1, 'rgba(255,210,160,0)');
-      ctx.fillStyle = sun;
-      ctx.fillRect(0, 0, W, GROUND_TOP);
-      // sun disc
-      ctx.fillStyle = '#fff4d0';
-      ctx.beginPath(); ctx.arc(sx, sy, 28, 0, Math.PI * 2); ctx.fill();
+
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -659,8 +672,12 @@
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(scale, scale);
-    ctx.fillStyle = nightMode ? 'rgba(160,160,200,.25)' : 'rgba(255,255,255,.92)';
-    // body of cloud — a few overlapping pixel rects
+    // Interpolate body: day white → night faint blue
+    const cr = Math.round(255 + (160 - 255) * nightT);
+    const cg = Math.round(255 + (160 - 255) * nightT);
+    const cb = Math.round(255 + (200 - 255) * nightT);
+    const ca = (0.92 + (0.25 - 0.92) * nightT).toFixed(2);
+    ctx.fillStyle = `rgba(${cr},${cg},${cb},${ca})`;
     const blocks = [
       [-26,-6,52,14],
       [-18,-14,36,10],
@@ -668,9 +685,10 @@
       [-10,-20,22,8],
       [12,-12,12,8],
     ];
-    blocks.forEach(b => ctx.fillRect(b[0], b[1], b[2], b[3]));
-    // soft shadow underside
-    ctx.fillStyle = 'rgba(255,200,170,.55)';
+    blocks.forEach(([bx,by,bw,bh]) => ctx.fillRect(bx, by, bw, bh));
+    // Underside shadow: light grey in sun, fades at night
+    const sa = (0.45 * (1 - nightT)).toFixed(2);
+    ctx.fillStyle = `rgba(200,210,220,${sa})`;
     ctx.fillRect(-30, 8, 60, 4);
     ctx.restore();
   }
