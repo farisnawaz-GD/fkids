@@ -225,53 +225,73 @@
 
 <script>
 (() => {
-  // ---------- ASSETS (embedded) ----------
-  const GOAT_SRC  = 'assets/goat.svg';
-  const KNIFE_SRC = 'assets/knife.svg';
-  const GRASS_SRC = 'assets/grass.svg';
+
+// ── ASSETS ────────────────────────────────────────────────────────────────────
 
   const goatImg  = new Image();
   const knifeImg = new Image();
   const grassImg = new Image();
   let assetsLoaded = 0;
-  const onLoad = () => {
-    assetsLoaded++;
-    if (assetsLoaded === 3) start();
-  };
+  const onLoad = () => { if (++assetsLoaded === 3) start(); };
   goatImg.onload  = goatImg.onerror  = onLoad;
   knifeImg.onload = knifeImg.onerror = onLoad;
   grassImg.onload = grassImg.onerror = onLoad;
-  goatImg.src  = GOAT_SRC;
-  knifeImg.src = KNIFE_SRC;
-  grassImg.src = GRASS_SRC;
+  goatImg.src  = 'assets/goat.svg';
+  knifeImg.src = 'assets/knife.svg';
+  grassImg.src = 'assets/grass.svg';
 
-  // ---------- CANVAS SETUP ----------
+// ── CANVAS ────────────────────────────────────────────────────────────────────
+
   const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
+  const ctx    = canvas.getContext('2d');
+  const W      = 400; // logical width; H adapts to viewport aspect
 
-  // Logical playfield size. W stays fixed for consistent feel; H adapts to viewport aspect.
-  const W = 400;
-  let H = 711; // initial portrait default; recomputed in resize()
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+
+  const GROUND_H       = 90;
+  const GRAVITY        = 0.42,  JUMP_VEL  = -7.6,  MAX_FALL  = 11;
+  const PIPE_SPEED     = 2.4,   PIPE_GAP  = 178,   PIPE_INTERVAL_PX = 230;
+  const PIPE_W         = 70,    PIPE_H    = 320,   PIPE_MIN_TOP = 70, PIPE_MIN_BOT = 70;
+  const KNIFE_HITBOX_W = 36;    // tighter than visual — feels fair
+  const STEAK_DRAW     = 38,    STEAK_HIT = 28,    STEAK_EVERY = 10;
+  const GOAT_DRAW_W    = 78,    GOAT_DRAW_H = 62;
+  const GOAT_HIT_W     = 50,    GOAT_HIT_H  = 40;  // tighter than sprite
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+
+  let H         = 711; // recomputed in resize()
+  let GROUND_TOP = H - GROUND_H;
+
+  let state  = 'ready';
+  let score  = 0;
+  let best   = (() => {
+    try { return parseInt(localStorage.getItem('flappyGoatBest') || '0', 10) || 0; }
+    catch (e) { return 0; }
+  })();
+
+  let goat   = { x: 110, y: H * 0.45, vy: 0, rot: 0, flap: 0 };
+  let pipes  = [], clouds = [], stars = [], trees = [];
+  let groundOffset = 0, bobT = 0;
+  let nightT = 0, nightTarget = 0;
+  let deathAt = 0;
+
+  const CLOUD_BLOCKS = [[-26,-6,52,14],[-18,-14,36,10],[-30,2,60,10],[-10,-20,22,8],[12,-12,12,8]];
+
+// ── RESIZE ────────────────────────────────────────────────────────────────────
 
   function resize() {
-    const stage = document.getElementById('stage');
-    const rect = stage.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
+    const rect = document.getElementById('stage').getBoundingClientRect();
+    const dpr  = Math.min(window.devicePixelRatio || 1, 2);
     const oldH = H;
-    const aspect = rect.height / Math.max(1, rect.width);
-    H = Math.round(W * aspect);
-    H = Math.max(600, Math.min(1100, H));
+    H = Math.max(600, Math.min(1100, Math.round(W * rect.height / Math.max(1, rect.width))));
     GROUND_TOP = H - GROUND_H;
-
     if (oldH && oldH !== H) {
       const r = H / oldH;
-      if (typeof goat !== 'undefined' && goat) goat.y *= r;
-      if (typeof pipes !== 'undefined') pipes.forEach(p => { p.gapY *= r; });
-      if (typeof clouds !== 'undefined') clouds.forEach(c => { c.y *= r; });
+      if (goat)   goat.y    *= r;
+      pipes.forEach(p  => { p.gapY *= r; });
+      clouds.forEach(c => { c.y   *= r; });
     }
-
-    canvas.width  = Math.round(rect.width * dpr);
+    canvas.width  = Math.round(rect.width  * dpr);
     canvas.height = Math.round(rect.height * dpr);
     ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
     ctx.imageSmoothingEnabled = true; // goat looks better smooth
@@ -279,28 +299,35 @@
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 100));
 
-  const GROUND_H = 90;
-  let   GROUND_TOP = H - GROUND_H;
+// ── INIT ──────────────────────────────────────────────────────────────────────
 
-  const GRAVITY = 0.42, JUMP_VEL = -7.6, MAX_FALL = 11;
-  const PIPE_SPEED = 2.4, PIPE_GAP = 178, PIPE_INTERVAL_PX = 230;
-  const PIPE_W = 70, PIPE_H = 320, PIPE_MIN_TOP = 70, PIPE_MIN_BOT = 70;
-  const KNIFE_HITBOX_W = 36; // tighter than visual — feels fair
-  const STEAK_DRAW = 38, STEAK_HIT = 28, STEAK_EVERY = 10;
-  const GOAT_DRAW_W = 78, GOAT_DRAW_H = 62;
-  const GOAT_HIT_W = 50, GOAT_HIT_H = 40; // tighter than sprite
+  function spawnPipe(x) {
+    const gapY = PIPE_MIN_TOP + Math.random() * (GROUND_TOP - PIPE_MIN_BOT - PIPE_GAP - PIPE_MIN_TOP);
+    pipes.push({ x, gapY, scored: false, hasSteak: false, steakCollected: false });
+  }
 
-  let state = 'ready';
-  let score = 0;
-  let best = (() => {
-    try { return parseInt(localStorage.getItem('flappyGoatBest') || '0', 10) || 0; }
-    catch (e) { return 0; }
-  })();
+  function initClouds() {
+    clouds = [];
+    for (let i = 0; i < 5; i++) {
+      clouds.push({
+        x: Math.random() * W,
+        y: 40 + Math.random() * (GROUND_TOP - 200),
+        scale: 0.6  + Math.random() * 0.8,
+        speed: 0.15 + Math.random() * 0.25,
+      });
+    }
+  }
 
-  let goat = { x: 110, y: H * 0.45, vy: 0, rot: 0, flap: 0 };
-  let pipes = [], clouds = [], stars = [], trees = [];
-  let groundOffset = 0, bobT = 0;
-  let nightT = 0, nightTarget = 0;
+  function initTrees() {
+    trees = [];
+    for (let i = 0; i < 7; i++) {
+      trees.push({
+        x:     (W / 6) * i + Math.random() * 30,
+        scale: 0.55 + Math.random() * 0.55,
+        type:  Math.random() < 0.35 ? 'bush' : 'tall',
+      });
+    }
+  }
 
   function initStars() {
     stars = [];
@@ -310,66 +337,40 @@
   }
 
   function reset() {
-    nightT = 0;
-    nightTarget = 0;
-    goat = { x: 110, y: H * 0.45, vy: 0, rot: 0, flap: 0 };
-    pipes = [];
+    nightT = 0; nightTarget = 0;
+    goat   = { x: 110, y: H * 0.45, vy: 0, rot: 0, flap: 0 };
+    pipes  = [];
     spawnPipe(W + 80);
     spawnPipe(W + 80 + PIPE_INTERVAL_PX);
     spawnPipe(W + 80 + PIPE_INTERVAL_PX * 2);
-    score = 0;
-    groundOffset = 0;
+    score = 0; groundOffset = 0;
     setScoreVisible(false);
     updateScoreText();
   }
 
-  function spawnPipe(x) {
-    const minY = PIPE_MIN_TOP;
-    const maxY = GROUND_TOP - PIPE_MIN_BOT - PIPE_GAP;
-    const gapY = minY + Math.random() * (maxY - minY);
-    pipes.push({ x, gapY, scored: false, hasSteak: false, steakCollected: false });
-  }
-
-  function initTrees() {
-    trees = [];
-    for (let i = 0; i < 7; i++) {
-      trees.push({
-        x: (W / 6) * i + Math.random() * 30,
-        scale: 0.55 + Math.random() * 0.55,
-        type: Math.random() < 0.35 ? 'bush' : 'tall',
-      });
-    }
-  }
-
-  // Generate some lazy clouds
-  function initClouds() {
-    clouds = [];
-    for (let i = 0; i < 5; i++) {
-      clouds.push({
-        x: Math.random() * W,
-        y: 40 + Math.random() * (GROUND_TOP - 200),
-        scale: 0.6 + Math.random() * 0.8,
-        speed: 0.15 + Math.random() * 0.25
-      });
-    }
-  }
+// ── INPUT ─────────────────────────────────────────────────────────────────────
 
   function flap() {
     if (state === 'ready') {
       setScreen('ready', false);
       setScoreVisible(true);
       state = 'playing';
-      goat.vy = JUMP_VEL;
-      goat.flap = 1;
+      goat.vy = JUMP_VEL; goat.flap = 1;
     } else if (state === 'playing') {
-      goat.vy = JUMP_VEL;
-      goat.flap = 1;
+      goat.vy = JUMP_VEL; goat.flap = 1;
     } else if (state === 'gameover') {
       if (performance.now() - deathAt > 500) startGame();
     }
   }
 
-  let deathAt = 0;
+  function startGame() {
+    reset();
+    setScreen('ready',    false);
+    setScreen('gameover', false);
+    setScoreVisible(true);
+    state = 'playing';
+    goat.vy = JUMP_VEL; goat.flap = 1;
+  }
 
   function onPointer(e) {
     if (e.target && e.target.closest && e.target.closest('.btn,.screen .panel')) return;
@@ -380,76 +381,55 @@
   document.addEventListener('touchend', e => {
     if (!e.target.closest('.btn')) e.preventDefault();
   }, { passive: false });
-  window.addEventListener('keydown', (e) => {
+  window.addEventListener('keydown', e => {
     if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
-      e.preventDefault();
-      flap();
+      e.preventDefault(); flap();
     }
   });
-
   // bfcache restores JS state mid-game — fully reset to ready screen
-  window.addEventListener('pageshow', (e) => {
+  window.addEventListener('pageshow', e => {
     if (e.persisted) {
-      reset();
-      state = 'ready';
+      reset(); state = 'ready';
       setScreen('gameover', false);
-      setScreen('ready', true);
+      setScreen('ready',    true);
       setScoreVisible(false);
     }
   });
+  document.getElementById('playBtn').addEventListener('click',  e => { e.stopPropagation(); startGame(); });
+  document.getElementById('retryBtn').addEventListener('click', e => { e.stopPropagation(); startGame(); });
 
-  document.getElementById('playBtn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    startGame();
-  });
-  document.getElementById('retryBtn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    startGame();
-  });
+// ── UTILITIES ─────────────────────────────────────────────────────────────────
 
-  function startGame() {
-    reset();
-    setScreen('ready', false);
-    setScreen('gameover', false);
-    setScoreVisible(true);
-    state = 'playing';
-    goat.vy = JUMP_VEL;
-    goat.flap = 1;
+  function setScreen(id, show) { document.getElementById(id)?.classList.toggle('show', show); }
+  function setScoreVisible(v)  { document.getElementById('score').classList.toggle('show', v); }
+  function updateScoreText()   { document.getElementById('score').textContent = score; }
+  function clamp(v, lo, hi)    { return v < lo ? lo : v > hi ? hi : v; }
+  function lc(dr,dg,db, nr,ng,nb, t) {
+    return `rgb(${~~(dr+(nr-dr)*t)},${~~(dg+(ng-dg)*t)},${~~(db+(nb-db)*t)})`;
   }
 
-  function setScreen(id, show) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.toggle('show', show);
-  }
-  function setScoreVisible(v) {
-    document.getElementById('score').classList.toggle('show', v);
-  }
-  function updateScoreText() {
-    document.getElementById('score').textContent = score;
-  }
-  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+// ── UPDATE ────────────────────────────────────────────────────────────────────
 
   function update(dt) {
     bobT += dt;
+
     const ns = dt * 0.0006;
     if (nightTarget > nightT) nightT = Math.min(nightT + ns, nightTarget);
-    else nightT = Math.max(nightT - ns, nightTarget);
+    else                      nightT = Math.max(nightT - ns, nightTarget);
 
-    // Scroll clouds and trees in all active states
     clouds.forEach(c => { c.x -= c.speed; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
-    trees.forEach(t => { t.x -= PIPE_SPEED * 0.45; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
+    trees.forEach(t  => { t.x -= PIPE_SPEED * 0.45; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
 
     if (state === 'ready') {
-      goat.y = H * 0.45 + Math.sin(bobT * 0.005) * 10;
+      goat.y   = H * 0.45 + Math.sin(bobT * 0.005) * 10;
       goat.rot = Math.sin(bobT * 0.005) * 0.08;
       groundOffset = (groundOffset + PIPE_SPEED * 0.5) % 40;
       return;
     }
 
     if (state === 'playing') {
-      goat.vy = Math.min(goat.vy + GRAVITY, MAX_FALL);
-      goat.y += goat.vy;
+      goat.vy  = Math.min(goat.vy + GRAVITY, MAX_FALL);
+      goat.y  += goat.vy;
       goat.rot = clamp(goat.vy * 0.06, -0.35, 1.15);
       if (goat.flap > 0) goat.flap = Math.max(0, goat.flap - dt * 0.005);
 
@@ -460,8 +440,7 @@
 
       pipes.forEach(p => {
         if (!p.scored && p.x + PIPE_W / 2 < goat.x) {
-          p.scored = true;
-          score++;
+          p.scored = true; score++;
           updateScoreText();
           if (score % STEAK_EVERY === 0) {
             const next = pipes.find(np => !np.scored && np.x > goat.x);
@@ -474,24 +453,19 @@
       groundOffset = (groundOffset + PIPE_SPEED) % 40;
 
       if (goat.y + GOAT_HIT_H / 2 >= GROUND_TOP) {
-        goat.y = GROUND_TOP - GOAT_HIT_H / 2;
-        gameOver();
-        return;
+        goat.y = GROUND_TOP - GOAT_HIT_H / 2; gameOver(); return;
       }
-      // Ceiling: clamp, don't kill
-      if (goat.y - GOAT_HIT_H / 2 < 0) {
+      if (goat.y - GOAT_HIT_H / 2 < 0) { // Ceiling: clamp, don't kill
         goat.y = GOAT_HIT_H / 2;
         if (goat.vy < 0) goat.vy = 0;
       }
 
-      const gx = goat.x, gy = goat.y;
-      const gL = gx - GOAT_HIT_W / 2, gR = gx + GOAT_HIT_W / 2;
-      const gT = gy - GOAT_HIT_H / 2, gB = gy + GOAT_HIT_H / 2;
+      const gL = goat.x - GOAT_HIT_W / 2, gR = goat.x + GOAT_HIT_W / 2;
+      const gT = goat.y - GOAT_HIT_H / 2, gB = goat.y + GOAT_HIT_H / 2;
       for (const p of pipes) {
-        const kL = p.x + (PIPE_W - KNIFE_HITBOX_W) / 2;
-        const kR = kL + KNIFE_HITBOX_W;
+        const kL = p.x + (PIPE_W - KNIFE_HITBOX_W) / 2, kR = kL + KNIFE_HITBOX_W;
         if (gR < kL || gL > kR) continue;
-        if (gT < p.gapY) { gameOver(); return; }
+        if (gT < p.gapY)            { gameOver(); return; }
         if (gB > p.gapY + PIPE_GAP) { gameOver(); return; }
       }
 
@@ -499,18 +473,16 @@
       for (const p of pipes) {
         if (!p.hasSteak || p.steakCollected) continue;
         const sx = p.x + PIPE_W / 2, sy = p.gapY + PIPE_GAP / 2;
-        if (gR > sx - half && gL < sx + half && gB > sy - half && gT < sy + half) {
-          p.steakCollected = true;
-          score += 5;
-          updateScoreText();
+        if (gR > sx-half && gL < sx+half && gB > sy-half && gT < sy+half) {
+          p.steakCollected = true; score += 5; updateScoreText();
         }
       }
     }
 
     if (state === 'gameover') {
       if (goat.y + GOAT_HIT_H / 2 < GROUND_TOP) {
-        goat.vy = Math.min(goat.vy + GRAVITY, MAX_FALL);
-        goat.y += goat.vy;
+        goat.vy  = Math.min(goat.vy + GRAVITY, MAX_FALL);
+        goat.y  += goat.vy;
         goat.rot = clamp(goat.rot + 0.04, -0.35, 1.5);
       } else {
         goat.y = GROUND_TOP - GOAT_HIT_H / 2;
@@ -520,167 +492,103 @@
 
   function gameOver() {
     if (state === 'gameover') return;
-    state = 'gameover';
-    deathAt = performance.now();
+    state = 'gameover'; deathAt = performance.now();
     const f = document.getElementById('flash');
-    f.classList.remove('flash');
-    void f.offsetWidth;
-    f.classList.add('flash');
-
+    f.classList.remove('flash'); void f.offsetWidth; f.classList.add('flash');
     const isNew = score > best;
     if (isNew) {
       best = score;
       try { localStorage.setItem('flappyGoatBest', String(best)); } catch (e) {}
     }
     document.getElementById('finalScore').textContent = score;
-    document.getElementById('bestScore').textContent = best;
+    document.getElementById('bestScore').textContent  = best;
     document.getElementById('bestStat').classList.toggle('new', isNew);
-
-    setTimeout(() => {
-      setScoreVisible(false);
-      setScreen('gameover', true);
-    }, 650);
+    setTimeout(() => { setScoreVisible(false); setScreen('gameover', true); }, 650);
   }
 
-  function lc(dr,dg,db, nr,ng,nb, t) {
-    return `rgb(${~~(dr+(nr-dr)*t)},${~~(dg+(ng-dg)*t)},${~~(db+(nb-db)*t)})`;
-  }
-
-  function drawTree(tx, scale, type) {
-    const nt = nightT;
-    const cTrunk  = lc(122,74,40,  20,10, 4, nt);
-    const cShade  = lc( 55,98,22,   8,18, 4, nt);
-    const cMid    = lc( 70,124,32,  12,24, 6, nt);
-    const cBright = lc( 86,152,40,  16,30, 8, nt);
-    const cTop    = lc(108,180,52,  20,38,10, nt);
-
-    ctx.save();
-    ctx.translate(tx, GROUND_TOP);
-    ctx.scale(scale, scale);
-
-    if (type === 'bush') {
-      ctx.fillStyle = cTrunk;
-      ctx.fillRect(-4, -18, 8, 18);
-      ctx.fillStyle = cShade;
-      ctx.fillRect(-24, -36, 48, 14);
-      ctx.fillStyle = cMid;
-      ctx.fillRect(-20, -50, 40, 16);
-      ctx.fillStyle = cBright;
-      ctx.fillRect(-14, -60, 28, 12);
-      ctx.fillStyle = cTop;
-      ctx.fillRect(-8, -68, 16, 10);
-    } else {
-      ctx.fillStyle = cTrunk;
-      ctx.fillRect(-5, -42, 10, 42);
-      ctx.fillStyle = cShade;
-      ctx.fillRect(-22, -58, 44, 16);
-      ctx.fillStyle = cMid;
-      ctx.fillRect(-18, -72, 36, 16);
-      ctx.fillRect(-14, -84, 28, 14);
-      ctx.fillStyle = cBright;
-      ctx.fillRect(-10, -94, 20, 12);
-      ctx.fillStyle = cTop;
-      ctx.fillRect(-6, -104, 12, 12);
-    }
-
-    ctx.restore();
-  }
-
-  function drawTrees() {
-    for (const t of trees) drawTree(t.x, t.scale, t.type);
-  }
+// ── DRAW ──────────────────────────────────────────────────────────────────────
 
   function drawSky() {
     const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
-    g.addColorStop(0,   '#ffd000');
-    g.addColorStop(0.5, '#ffcf00');
-    g.addColorStop(1,   '#ffe040');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, GROUND_TOP);
+    g.addColorStop(0, '#ffd000'); g.addColorStop(0.5, '#ffcf00'); g.addColorStop(1, '#ffe040');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND_TOP);
 
     ctx.globalAlpha = 1 - nightT;
     const sx = W * 0.78, sy = 80;
     const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 110);
-    sun.addColorStop(0,   'rgba(255,255,255,.95)');
-    sun.addColorStop(0.4, 'rgba(255,255,200,.40)');
-    sun.addColorStop(1,   'rgba(255,255,180,0)');
-    ctx.fillStyle = sun;
-    ctx.fillRect(0, 0, W, GROUND_TOP);
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI * 2); ctx.fill();
+    sun.addColorStop(0, 'rgba(255,255,255,.95)'); sun.addColorStop(0.4, 'rgba(255,255,200,.40)'); sun.addColorStop(1, 'rgba(255,255,180,0)');
+    ctx.fillStyle = sun; ctx.fillRect(0, 0, W, GROUND_TOP);
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
 
     if (nightT > 0) {
       ctx.globalAlpha = nightT;
       const ng = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
-      ng.addColorStop(0,   '#05051e');
-      ng.addColorStop(0.5, '#0d0d3a');
-      ng.addColorStop(1,   '#1a0f2e');
-      ctx.fillStyle = ng;
-      ctx.fillRect(0, 0, W, GROUND_TOP);
-
+      ng.addColorStop(0, '#05051e'); ng.addColorStop(0.5, '#0d0d3a'); ng.addColorStop(1, '#1a0f2e');
+      ctx.fillStyle = ng; ctx.fillRect(0, 0, W, GROUND_TOP);
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      for (const s of stars) {
-        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
-      }
+      for (const s of stars) { ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill(); }
       const mx = W * 0.78, my = 90;
-      const moonGlow = ctx.createRadialGradient(mx, my, 0, mx, my, 80);
-      moonGlow.addColorStop(0, 'rgba(220,220,180,.25)');
-      moonGlow.addColorStop(1, 'rgba(220,220,180,0)');
-      ctx.fillStyle = moonGlow;
-      ctx.fillRect(0, 0, W, GROUND_TOP);
-      ctx.fillStyle = '#f0f0d0';
-      ctx.beginPath(); ctx.arc(mx, my, 26, 0, Math.PI * 2); ctx.fill();
+      const mg = ctx.createRadialGradient(mx, my, 0, mx, my, 80);
+      mg.addColorStop(0, 'rgba(220,220,180,.25)'); mg.addColorStop(1, 'rgba(220,220,180,0)');
+      ctx.fillStyle = mg; ctx.fillRect(0, 0, W, GROUND_TOP);
+      ctx.fillStyle = '#f0f0d0'; ctx.beginPath(); ctx.arc(mx, my, 26, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgba(160,160,120,0.45)';
       ctx.beginPath(); ctx.arc(mx + 8, my - 6, 7, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(mx - 8, my + 8, 4, 0, Math.PI * 2); ctx.fill();
-
       ctx.globalAlpha = 1;
     }
   }
 
   function drawCloud(cx, cy, scale) {
     ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(scale, scale);
-    const cr = Math.round(255 + (160 - 255) * nightT);
-    const cg = Math.round(255 + (160 - 255) * nightT);
+    ctx.translate(cx, cy); ctx.scale(scale, scale);
+    const cv = Math.round(255 + (160 - 255) * nightT); // r & g channels are identical
     const cb = Math.round(255 + (200 - 255) * nightT);
     const ca = (0.92 + (0.25 - 0.92) * nightT).toFixed(2);
-    ctx.fillStyle = `rgba(${cr},${cg},${cb},${ca})`;
-    const blocks = [
-      [-26,-6,52,14],
-      [-18,-14,36,10],
-      [-30,2,60,10],
-      [-10,-20,22,8],
-      [12,-12,12,8],
-    ];
-    blocks.forEach(([bx,by,bw,bh]) => ctx.fillRect(bx, by, bw, bh));
-    const sa = (0.45 * (1 - nightT)).toFixed(2);
-    ctx.fillStyle = `rgba(200,210,220,${sa})`;
+    ctx.fillStyle = `rgba(${cv},${cv},${cb},${ca})`;
+    CLOUD_BLOCKS.forEach(([x,y,w,h]) => ctx.fillRect(x, y, w, h));
+    ctx.fillStyle = `rgba(200,210,220,${(0.45*(1-nightT)).toFixed(2)})`;
     ctx.fillRect(-30, 8, 60, 4);
     ctx.restore();
   }
 
-  function drawClouds() {
-    for (const c of clouds) drawCloud(c.x, c.y, c.scale);
+  function drawTree(tx, scale, type) {
+    const nt      = nightT;
+    const cTrunk  = lc(122,74,40,  20,10, 4, nt);
+    const cShade  = lc( 55,98,22,   8,18, 4, nt);
+    const cMid    = lc( 70,124,32,  12,24, 6, nt);
+    const cBright = lc( 86,152,40,  16,30, 8, nt);
+    const cTop    = lc(108,180,52,  20,38,10, nt);
+    ctx.save();
+    ctx.translate(tx, GROUND_TOP); ctx.scale(scale, scale);
+    if (type === 'bush') {
+      ctx.fillStyle = cTrunk;  ctx.fillRect( -4, -18,  8, 18);
+      ctx.fillStyle = cShade;  ctx.fillRect(-24, -36, 48, 14);
+      ctx.fillStyle = cMid;    ctx.fillRect(-20, -50, 40, 16);
+      ctx.fillStyle = cBright; ctx.fillRect(-14, -60, 28, 12);
+      ctx.fillStyle = cTop;    ctx.fillRect( -8, -68, 16, 10);
+    } else {
+      ctx.fillStyle = cTrunk;  ctx.fillRect( -5,  -42, 10, 42);
+      ctx.fillStyle = cShade;  ctx.fillRect(-22,  -58, 44, 16);
+      ctx.fillStyle = cMid;    ctx.fillRect(-18,  -72, 36, 16); ctx.fillRect(-14, -84, 28, 14);
+      ctx.fillStyle = cBright; ctx.fillRect(-10,  -94, 20, 12);
+      ctx.fillStyle = cTop;    ctx.fillRect( -6, -104, 12, 12);
+    }
+    ctx.restore();
   }
 
   function drawPipe(p) {
     const x = p.x;
-
     ctx.save();
     ctx.translate(x + PIPE_W / 2, p.gapY);
     ctx.scale(1, -1); // flip so blade points down
     ctx.drawImage(knifeImg, -PIPE_W / 2, 0, PIPE_W, PIPE_H);
     ctx.restore();
-
     ctx.drawImage(knifeImg, x, p.gapY + PIPE_GAP, PIPE_W, PIPE_H);
-
     ctx.fillStyle = 'rgba(255,255,255,.55)';
     ctx.fillRect(x + PIPE_W * 0.45, p.gapY - 6, 4, 4);
     ctx.fillRect(x + PIPE_W * 0.45, p.gapY + PIPE_GAP + 2, 4, 4);
-
     if (p.hasSteak && !p.steakCollected) {
       const sx = x + PIPE_W / 2;
       const sy = p.gapY + PIPE_GAP / 2 + Math.sin(bobT * 0.003) * 5;
@@ -688,15 +596,9 @@
     }
   }
 
-  function drawPipes() {
-    for (const p of pipes) drawPipe(p);
-  }
-
   function drawGround() {
-    ctx.fillStyle = '#8b5e3c';
-    ctx.fillRect(0, GROUND_TOP, W, GROUND_H);
-    ctx.fillStyle = '#4a8c2a';
-    ctx.fillRect(0, GROUND_TOP, W, 16);
+    ctx.fillStyle = '#8b5e3c'; ctx.fillRect(0, GROUND_TOP, W, GROUND_H);
+    ctx.fillStyle = '#4a8c2a'; ctx.fillRect(0, GROUND_TOP, W, 16);
     ctx.fillStyle = '#3a6e1e';
     for (let x = -groundOffset; x < W; x += 20) ctx.fillRect(x, GROUND_TOP + 10, 10, 5);
     ctx.fillStyle = '#6e4828';
@@ -704,28 +606,28 @@
       ctx.fillRect(x + 8,  GROUND_TOP + 36, 8, 6);
       ctx.fillRect(x + 32, GROUND_TOP + 56, 6, 4);
     }
-    ctx.fillStyle = 'rgba(255,255,255,.25)';
-    ctx.fillRect(0, GROUND_TOP, W, 2);
+    ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(0, GROUND_TOP, W, 2);
   }
 
   function drawGoat() {
     ctx.save();
-    ctx.translate(goat.x, goat.y);
-    ctx.rotate(goat.rot);
-    const s = 1 + goat.flap * 0.08;
-    ctx.scale(s, s);
+    ctx.translate(goat.x, goat.y); ctx.rotate(goat.rot);
+    const s = 1 + goat.flap * 0.08; ctx.scale(s, s);
     ctx.drawImage(goatImg, -GOAT_DRAW_W / 2, -GOAT_DRAW_H / 2, GOAT_DRAW_W, GOAT_DRAW_H);
     ctx.restore();
-
     if (state !== 'gameover') {
       const shadowY = GROUND_TOP - 2;
-      const dist = clamp(1 - (shadowY - goat.y) / 240, 0.15, 0.7);
+      const dist    = clamp(1 - (shadowY - goat.y) / 240, 0.15, 0.7);
       ctx.fillStyle = `rgba(74,46,90,${dist * 0.35})`;
       ctx.beginPath();
       ctx.ellipse(goat.x, shadowY, 24 * dist + 14, 5 * dist + 2, 0, 0, Math.PI * 2);
       ctx.fill();
     }
   }
+
+  function drawTrees()  { for (const t of trees)  drawTree(t.x, t.scale, t.type); }
+  function drawClouds() { for (const c of clouds) drawCloud(c.x, c.y, c.scale); }
+  function drawPipes()  { for (const p of pipes)  drawPipe(p); }
 
   function draw() {
     ctx.clearRect(0, 0, W, H);
@@ -736,6 +638,8 @@
     drawGround();
     drawGoat();
   }
+
+// ── LOOP ──────────────────────────────────────────────────────────────────────
 
   let lastT = 0;
   function loop(t) {
@@ -748,14 +652,13 @@
 
   function start() {
     resize();
-    initClouds();
-    initTrees();
-    initStars();
+    initClouds(); initTrees(); initStars();
     reset();
     setScreen('ready', true);
     setScoreVisible(false);
     requestAnimationFrame(loop);
   }
+
 })();
 </script>
 </body>
