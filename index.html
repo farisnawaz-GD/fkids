@@ -29,7 +29,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* dreamy dawn backdrop behind the playfield */
     background:
       radial-gradient(ellipse at 30% 10%, #ffd2b0 0%, transparent 55%),
       radial-gradient(ellipse at 70% 90%, #a673c2 0%, transparent 60%),
@@ -176,34 +175,6 @@
       inset 0 -4px 0 rgba(0,0,0,.25),
       1px 2px 0 #4a2e5a;
   }
-  .hint {
-    margin-top: 14px;
-    font-size: 10px;
-    color: #4a2e5a;
-    opacity: .8;
-    letter-spacing: 1px;
-  }
-  .hint .key {
-    display: inline-block;
-    background: #4a2e5a;
-    color: #fff1d6;
-    padding: 3px 6px;
-    margin: 0 2px;
-  }
-
-  /* tiny goat-tap hint that bobs */
-  .tap-hint {
-    margin-top: 18px;
-    font-size: 12px;
-    color: #fff1d6;
-    text-shadow: 2px 2px 0 #4a2e5a;
-    animation: bob 1s ease-in-out infinite;
-  }
-  @keyframes bob {
-    0%,100% { transform: translateY(0); }
-    50% { transform: translateY(-6px); }
-  }
-
   /* flash on death */
   #flash {
     position: absolute;
@@ -286,16 +257,12 @@
     const rect = stage.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-    // Derive logical H from the real viewport's aspect ratio so the canvas
-    // fills the screen without distortion. Clamp to a sensible portrait range.
     const oldH = H;
     const aspect = rect.height / Math.max(1, rect.width);
     H = Math.round(W * aspect);
     H = Math.max(600, Math.min(1100, H));
     GROUND_TOP = H - GROUND_H;
 
-    // Rescale live entities so a viewport change (rotation, URL-bar toggle)
-    // doesn't suddenly send the goat into the ground or pipes off-screen.
     if (oldH && oldH !== H) {
       const r = H / oldH;
       if (typeof goat !== 'undefined' && goat) goat.y *= r;
@@ -305,45 +272,24 @@
 
     canvas.width  = Math.round(rect.width * dpr);
     canvas.height = Math.round(rect.height * dpr);
-    // We draw in logical units; scale ctx so (W,H) maps to the canvas.
     ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
     ctx.imageSmoothingEnabled = true; // goat looks better smooth
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 100));
 
-  // ---------- GAME CONSTANTS ----------
   const GROUND_H = 90;
-  let   GROUND_TOP = H - GROUND_H; // recomputed in resize()
+  let   GROUND_TOP = H - GROUND_H;
 
-  const GRAVITY = 0.42;
-  const JUMP_VEL = -7.6;
-  const MAX_FALL = 11;
+  const GRAVITY = 0.42, JUMP_VEL = -7.6, MAX_FALL = 11;
+  const PIPE_SPEED = 2.4, PIPE_GAP = 178, PIPE_INTERVAL_PX = 230;
+  const PIPE_W = 70, PIPE_H = 320, PIPE_MIN_TOP = 70, PIPE_MIN_BOT = 70;
+  const KNIFE_HITBOX_W = 36; // tighter than visual — feels fair
+  const STEAK_DRAW = 38, STEAK_HIT = 28, STEAK_EVERY = 10;
+  const GOAT_DRAW_W = 78, GOAT_DRAW_H = 62;
+  const GOAT_HIT_W = 50, GOAT_HIT_H = 40; // tighter than sprite
 
-  const PIPE_SPEED = 2.4;
-  const PIPE_GAP = 178;
-  const PIPE_INTERVAL_PX = 230; // horizontal distance between pairs
-  const PIPE_W = 70;            // visible knife width
-  const PIPE_H = 320;           // visible knife sprite height
-  const PIPE_MIN_TOP = 70;      // gap top stays this far below ceiling
-  const PIPE_MIN_BOT = 70;      // gap bottom stays this far above ground
-
-  // Hitbox is tighter than the visual to feel fair
-  const KNIFE_HITBOX_W = 36;
-
-  const STEAK_DRAW = 38;   // draw size (square)
-  const STEAK_HIT  = 28;   // collect hitbox size
-  const STEAK_EVERY = 10;  // collectible appears every N knives scored
-
-  // Goat draw size (keep aspect ratio of the image)
-  const GOAT_DRAW_W = 78;
-  const GOAT_DRAW_H = 62;
-  // Hitbox tighter than the sprite (the legs/horns shouldn't kill you)
-  const GOAT_HIT_W = 50;
-  const GOAT_HIT_H = 40;
-
-  // ---------- STATE ----------
-  let state = 'ready'; // ready | playing | gameover
+  let state = 'ready';
   let score = 0;
   let best = (() => {
     try { return parseInt(localStorage.getItem('flappyGoatBest') || '0', 10) || 0; }
@@ -351,14 +297,9 @@
   })();
 
   let goat = { x: 110, y: H * 0.45, vy: 0, rot: 0, flap: 0 };
-  let pipes = [];   // {x, gapY, scored}
-  let clouds = [];  // {x,y,scale,speed}
-  let stars = [];   // {x,y,r} — generated once, used in night mode
-  let trees = [];   // {x,scale,type}
-  let groundOffset = 0;
-  let bobT = 0;     // for idle bob in ready state
-  let nightT = 0;      // 0 = full day, 1 = full night
-  let nightTarget = 0; // toggles between 0 and 1
+  let pipes = [], clouds = [], stars = [], trees = [];
+  let groundOffset = 0, bobT = 0;
+  let nightT = 0, nightTarget = 0;
 
   function initStars() {
     stars = [];
@@ -412,7 +353,6 @@
     }
   }
 
-  // ---------- INPUT ----------
   function flap() {
     if (state === 'ready') {
       setScreen('ready', false);
@@ -424,14 +364,12 @@
       goat.vy = JUMP_VEL;
       goat.flap = 1;
     } else if (state === 'gameover') {
-      // small debounce
       if (performance.now() - deathAt > 500) startGame();
     }
   }
 
   let deathAt = 0;
 
-  // Pointer/touch: ignore taps on buttons inside overlay
   function onPointer(e) {
     if (e.target && e.target.closest && e.target.closest('.btn,.screen .panel')) return;
     e.preventDefault();
@@ -445,6 +383,15 @@
     if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
       e.preventDefault();
       flap();
+    }
+  });
+
+  // Restore correct screen when browser bfcache brings back a stale DOM state
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) {
+      setScreen('gameover', false);
+      setScreen('ready', state === 'ready');
+      setScoreVisible(state === 'playing');
     }
   });
 
@@ -467,7 +414,6 @@
     goat.flap = 1;
   }
 
-  // ---------- HELPERS ----------
   function setScreen(id, show) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -481,45 +427,39 @@
   }
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
-  // ---------- UPDATE ----------
   function update(dt) {
     bobT += dt;
-    // Smooth day/night blend (~1.7s full transition)
     const ns = dt * 0.0006;
     if (nightTarget > nightT) nightT = Math.min(nightT + ns, nightTarget);
     else nightT = Math.max(nightT - ns, nightTarget);
 
+    // Scroll clouds and trees in all active states
+    clouds.forEach(c => { c.x -= c.speed; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
+    trees.forEach(t => { t.x -= PIPE_SPEED * 0.45; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
+
     if (state === 'ready') {
-      // Idle bob
       goat.y = H * 0.45 + Math.sin(bobT * 0.005) * 10;
       goat.rot = Math.sin(bobT * 0.005) * 0.08;
-      // ground & clouds still drift
       groundOffset = (groundOffset + PIPE_SPEED * 0.5) % 40;
-      clouds.forEach(c => { c.x -= c.speed; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
-      trees.forEach(t => { t.x -= PIPE_SPEED * 0.45; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
       return;
     }
 
     if (state === 'playing') {
-      // Goat physics
       goat.vy = Math.min(goat.vy + GRAVITY, MAX_FALL);
       goat.y += goat.vy;
       goat.rot = clamp(goat.vy * 0.06, -0.35, 1.15);
       if (goat.flap > 0) goat.flap = Math.max(0, goat.flap - dt * 0.005);
 
-      // Pipes
       pipes.forEach(p => { p.x -= PIPE_SPEED; });
       const last = pipes[pipes.length - 1];
       if (last.x < W - PIPE_INTERVAL_PX) spawnPipe(last.x + PIPE_INTERVAL_PX);
       pipes = pipes.filter(p => p.x > -PIPE_W - 20);
 
-      // Score: goat fully past the pipe center
       pipes.forEach(p => {
         if (!p.scored && p.x + PIPE_W / 2 < goat.x) {
           p.scored = true;
           score++;
           updateScoreText();
-          // Tag next upcoming pipe with a steak every STEAK_EVERY knives
           if (score % STEAK_EVERY === 0) {
             const next = pipes.find(np => !np.scored && np.x > goat.x);
             if (next) { next.hasSteak = true; next.steakCollected = false; }
@@ -528,17 +468,8 @@
         }
       });
 
-      // Clouds
-      clouds.forEach(c => { c.x -= c.speed; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
-
-      // Trees
-      trees.forEach(t => { t.x -= PIPE_SPEED * 0.45; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
-
-      // Ground scroll
       groundOffset = (groundOffset + PIPE_SPEED) % 40;
 
-      // Collisions
-      // Ground
       if (goat.y + GOAT_HIT_H / 2 >= GROUND_TOP) {
         goat.y = GROUND_TOP - GOAT_HIT_H / 2;
         gameOver();
@@ -549,27 +480,22 @@
         goat.y = GOAT_HIT_H / 2;
         if (goat.vy < 0) goat.vy = 0;
       }
-      // Knives
+
       const gx = goat.x, gy = goat.y;
       const gL = gx - GOAT_HIT_W / 2, gR = gx + GOAT_HIT_W / 2;
       const gT = gy - GOAT_HIT_H / 2, gB = gy + GOAT_HIT_H / 2;
       for (const p of pipes) {
-        const px = p.x;
-        const kL = px + (PIPE_W - KNIFE_HITBOX_W) / 2;
+        const kL = p.x + (PIPE_W - KNIFE_HITBOX_W) / 2;
         const kR = kL + KNIFE_HITBOX_W;
         if (gR < kL || gL > kR) continue;
-        // top knife hitbox: from ceiling to gapY
         if (gT < p.gapY) { gameOver(); return; }
-        // bottom knife hitbox: from gapY+PIPE_GAP down
         if (gB > p.gapY + PIPE_GAP) { gameOver(); return; }
       }
 
-      // Steak collection
       const half = STEAK_HIT / 2;
       for (const p of pipes) {
         if (!p.hasSteak || p.steakCollected) continue;
-        const sx = p.x + PIPE_W / 2;
-        const sy = p.gapY + PIPE_GAP / 2;
+        const sx = p.x + PIPE_W / 2, sy = p.gapY + PIPE_GAP / 2;
         if (gR > sx - half && gL < sx + half && gB > sy - half && gT < sy + half) {
           p.steakCollected = true;
           score += 5;
@@ -579,7 +505,6 @@
     }
 
     if (state === 'gameover') {
-      // Goat keeps falling until it hits the ground
       if (goat.y + GOAT_HIT_H / 2 < GROUND_TOP) {
         goat.vy = Math.min(goat.vy + GRAVITY, MAX_FALL);
         goat.y += goat.vy;
@@ -594,13 +519,11 @@
     if (state === 'gameover') return;
     state = 'gameover';
     deathAt = performance.now();
-    // flash
     const f = document.getElementById('flash');
     f.classList.remove('flash');
     void f.offsetWidth;
     f.classList.add('flash');
 
-    // best
     const isNew = score > best;
     if (isNew) {
       best = score;
@@ -610,26 +533,23 @@
     document.getElementById('bestScore').textContent = best;
     document.getElementById('bestStat').classList.toggle('new', isNew);
 
-    // Show after a short beat so the impact feels punchy
     setTimeout(() => {
       setScoreVisible(false);
       setScreen('gameover', true);
     }, 650);
   }
 
-  // ---------- DRAW ----------
+  function lc(dr,dg,db, nr,ng,nb, t) {
+    return `rgb(${~~(dr+(nr-dr)*t)},${~~(dg+(ng-dg)*t)},${~~(db+(nb-db)*t)})`;
+  }
 
   function drawTree(tx, scale, type) {
     const nt = nightT;
-    // Interpolate day green/brown → near-black night silhouettes
-    function lc(dr,dg,db, nr,ng,nb) {
-      return `rgb(${~~(dr+(nr-dr)*nt)},${~~(dg+(ng-dg)*nt)},${~~(db+(nb-db)*nt)})`;
-    }
-    const cTrunk  = lc(122,74,40,  20,10, 4);
-    const cShade  = lc( 55,98,22,   8,18, 4);
-    const cMid    = lc( 70,124,32,  12,24, 6);
-    const cBright = lc( 86,152,40,  16,30, 8);
-    const cTop    = lc(108,180,52,  20,38,10);
+    const cTrunk  = lc(122,74,40,  20,10, 4, nt);
+    const cShade  = lc( 55,98,22,   8,18, 4, nt);
+    const cMid    = lc( 70,124,32,  12,24, 6, nt);
+    const cBright = lc( 86,152,40,  16,30, 8, nt);
+    const cTop    = lc(108,180,52,  20,38,10, nt);
 
     ctx.save();
     ctx.translate(tx, GROUND_TOP);
@@ -668,7 +588,6 @@
   }
 
   function drawSky() {
-    // Day sky — bright yellow (always drawn as base)
     const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
     g.addColorStop(0,   '#ffd000');
     g.addColorStop(0.5, '#ffcf00');
@@ -676,7 +595,6 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, GROUND_TOP);
 
-    // Sun (fades out as night arrives)
     ctx.globalAlpha = 1 - nightT;
     const sx = W * 0.78, sy = 80;
     const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 110);
@@ -689,7 +607,6 @@
     ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
 
-    // Night sky overlay (fades in)
     if (nightT > 0) {
       ctx.globalAlpha = nightT;
       const ng = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
@@ -699,23 +616,18 @@
       ctx.fillStyle = ng;
       ctx.fillRect(0, 0, W, GROUND_TOP);
 
-      // Stars
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
       for (const s of stars) {
         ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
       }
-
-      // Moon glow
       const mx = W * 0.78, my = 90;
       const moonGlow = ctx.createRadialGradient(mx, my, 0, mx, my, 80);
       moonGlow.addColorStop(0, 'rgba(220,220,180,.25)');
       moonGlow.addColorStop(1, 'rgba(220,220,180,0)');
       ctx.fillStyle = moonGlow;
       ctx.fillRect(0, 0, W, GROUND_TOP);
-      // Moon disc
       ctx.fillStyle = '#f0f0d0';
       ctx.beginPath(); ctx.arc(mx, my, 26, 0, Math.PI * 2); ctx.fill();
-      // Craters
       ctx.fillStyle = 'rgba(160,160,120,0.45)';
       ctx.beginPath(); ctx.arc(mx + 8, my - 6, 7, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(mx - 8, my + 8, 4, 0, Math.PI * 2); ctx.fill();
@@ -724,12 +636,10 @@
     }
   }
 
-  // Chunky pixel cloud (rectangles, no anti-alias feel)
   function drawCloud(cx, cy, scale) {
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(scale, scale);
-    // Interpolate body: day white → night faint blue
     const cr = Math.round(255 + (160 - 255) * nightT);
     const cg = Math.round(255 + (160 - 255) * nightT);
     const cb = Math.round(255 + (200 - 255) * nightT);
@@ -743,7 +653,6 @@
       [12,-12,12,8],
     ];
     blocks.forEach(([bx,by,bw,bh]) => ctx.fillRect(bx, by, bw, bh));
-    // Underside shadow: light grey in sun, fades at night
     const sa = (0.45 * (1 - nightT)).toFixed(2);
     ctx.fillStyle = `rgba(200,210,220,${sa})`;
     ctx.fillRect(-30, 8, 60, 4);
@@ -754,27 +663,21 @@
     for (const c of clouds) drawCloud(c.x, c.y, c.scale);
   }
 
-  // One pair of knife obstacles
   function drawPipe(p) {
     const x = p.x;
 
-    // TOP knife: flipped vertically, blade tip at gapY
     ctx.save();
     ctx.translate(x + PIPE_W / 2, p.gapY);
     ctx.scale(1, -1); // flip so blade points down
-    // Draw so the bottom of sprite (blade tip in unflipped frame == top in flipped) sits at translate origin
     ctx.drawImage(knifeImg, -PIPE_W / 2, 0, PIPE_W, PIPE_H);
     ctx.restore();
 
-    // BOTTOM knife: blade tip just below gap
     ctx.drawImage(knifeImg, x, p.gapY + PIPE_GAP, PIPE_W, PIPE_H);
 
-    // subtle blade-glints near the tips
     ctx.fillStyle = 'rgba(255,255,255,.55)';
     ctx.fillRect(x + PIPE_W * 0.45, p.gapY - 6, 4, 4);
     ctx.fillRect(x + PIPE_W * 0.45, p.gapY + PIPE_GAP + 2, 4, 4);
 
-    // Steak collectible floating in gap center
     if (p.hasSteak && !p.steakCollected) {
       const sx = x + PIPE_W / 2;
       const sy = p.gapY + PIPE_GAP / 2 + Math.sin(bobT * 0.003) * 5;
@@ -786,26 +689,18 @@
     for (const p of pipes) drawPipe(p);
   }
 
-  // Scrolling pixel ground
   function drawGround() {
-    // dirt body
     ctx.fillStyle = '#8b5e3c';
     ctx.fillRect(0, GROUND_TOP, W, GROUND_H);
-    // grass strip
     ctx.fillStyle = '#4a8c2a';
     ctx.fillRect(0, GROUND_TOP, W, 16);
-    // top grass tufts (scrolling)
     ctx.fillStyle = '#3a6e1e';
-    for (let x = -groundOffset; x < W; x += 20) {
-      ctx.fillRect(x, GROUND_TOP + 10, 10, 5);
-    }
-    // pixel rocks scattered (scrolling)
+    for (let x = -groundOffset; x < W; x += 20) ctx.fillRect(x, GROUND_TOP + 10, 10, 5);
     ctx.fillStyle = '#6e4828';
     for (let x = -groundOffset * 2; x < W; x += 60) {
       ctx.fillRect(x + 8,  GROUND_TOP + 36, 8, 6);
       ctx.fillRect(x + 32, GROUND_TOP + 56, 6, 4);
     }
-    // top edge highlight
     ctx.fillStyle = 'rgba(255,255,255,.25)';
     ctx.fillRect(0, GROUND_TOP, W, 2);
   }
@@ -814,14 +709,11 @@
     ctx.save();
     ctx.translate(goat.x, goat.y);
     ctx.rotate(goat.rot);
-    // slight pop when flapping
     const s = 1 + goat.flap * 0.08;
     ctx.scale(s, s);
-    // drop shadow on ground when close
     ctx.drawImage(goatImg, -GOAT_DRAW_W / 2, -GOAT_DRAW_H / 2, GOAT_DRAW_W, GOAT_DRAW_H);
     ctx.restore();
 
-    // ground shadow (separate, not rotated)
     if (state !== 'gameover') {
       const shadowY = GROUND_TOP - 2;
       const dist = clamp(1 - (shadowY - goat.y) / 240, 0.15, 0.7);
@@ -842,7 +734,6 @@
     drawGoat();
   }
 
-  // ---------- LOOP ----------
   let lastT = 0;
   function loop(t) {
     const dt = lastT ? Math.min(40, t - lastT) : 16;
