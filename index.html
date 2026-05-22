@@ -260,26 +260,22 @@
   // ---------- ASSETS (embedded) ----------
   const GOAT_SRC  = 'assets/goat.svg';
   const KNIFE_SRC = 'assets/knife.svg';
-  const STEAK_SRC = 'assets/steak.svg';
-  const BBQ_SRC   = 'assets/bbq.svg';
+  const GRASS_SRC = 'assets/grass.svg';
 
   const goatImg  = new Image();
   const knifeImg = new Image();
-  const steakImg = new Image();
-  const bbqImg   = new Image();
+  const grassImg = new Image();
   let assetsLoaded = 0;
   const onLoad = () => {
     assetsLoaded++;
-    if (assetsLoaded === 4) start();
+    if (assetsLoaded === 3) start();
   };
   goatImg.onload  = onLoad;
   knifeImg.onload = onLoad;
-  steakImg.onload = onLoad;
-  bbqImg.onload   = onLoad;
+  grassImg.onload = onLoad;
   goatImg.src  = GOAT_SRC;
   knifeImg.src = KNIFE_SRC;
-  steakImg.src = STEAK_SRC;
-  bbqImg.src   = BBQ_SRC;
+  grassImg.src = GRASS_SRC;
 
   // ---------- CANVAS SETUP ----------
   const canvas = document.getElementById('game');
@@ -530,7 +526,7 @@
           // Tag next upcoming pipe with a steak every STEAK_EVERY knives
           if (score % STEAK_EVERY === 0) {
             const next = pipes.find(np => !np.scored && np.x > goat.x);
-            if (next) { next.hasSteak = true; next.steakCollected = false; next.steakType = Math.random() < 0.5 ? 'steak' : 'bbq'; }
+            if (next) { next.hasSteak = true; next.steakCollected = false; }
           }
           if (score % 20 === 0) nightTarget = 1 - nightTarget;
         }
@@ -786,8 +782,7 @@
     if (p.hasSteak && !p.steakCollected) {
       const sx = x + PIPE_W / 2;
       const sy = p.gapY + PIPE_GAP / 2 + Math.sin(bobT * 0.003) * 5;
-      const img = p.steakType === 'bbq' ? bbqImg : steakImg;
-      ctx.drawImage(img, sx - STEAK_DRAW / 2, sy - STEAK_DRAW / 2, STEAK_DRAW, STEAK_DRAW);
+      ctx.drawImage(grassImg, sx - STEAK_DRAW / 2, sy - STEAK_DRAW / 2, STEAK_DRAW, STEAK_DRAW);
     }
   }
 
