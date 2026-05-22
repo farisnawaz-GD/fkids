@@ -266,9 +266,9 @@
     assetsLoaded++;
     if (assetsLoaded === 3) start();
   };
-  goatImg.onload  = onLoad;
-  knifeImg.onload = onLoad;
-  grassImg.onload = onLoad;
+  goatImg.onload  = goatImg.onerror  = onLoad;
+  knifeImg.onload = knifeImg.onerror = onLoad;
+  grassImg.onload = grassImg.onerror = onLoad;
   goatImg.src  = GOAT_SRC;
   knifeImg.src = KNIFE_SRC;
   grassImg.src = GRASS_SRC;
