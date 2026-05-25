@@ -185,6 +185,14 @@
       inset 0 -4px 0 rgba(0,0,0,.25),
       1px 2px 0 #1c1c1c;
   }
+  .btn-snap {
+    background: #1c1c1c;
+    color: #ffd500;
+    margin-top: 6px;
+    box-shadow:
+      inset 0 -4px 0 rgba(0,0,0,.35),
+      4px 6px 0 rgba(0,0,0,.4);
+  }
   /* flash on death */
   #flash {
     position: absolute;
@@ -232,6 +240,7 @@
           <div class="stat best" id="bestStat"><div class="lbl">BEST</div><div class="val" id="bestScore">0</div></div>
         </div>
         <button class="btn" id="retryBtn">PLAY AGAIN</button>
+        <button class="btn btn-snap" id="saveSnapBtn">SAVE SNAP</button>
       </div>
     </div>
   </div>
@@ -287,6 +296,7 @@
   let groundOffset = 0, bobT = 0;
   let nightT = 0, nightTarget = 0;
   let deathAt = 0;
+  let deathSnap = null;
   let skyGrad = null, skyNightGrad = null, sunGrad = null, moonGrad = null;
   let _cachedNightT = -1;
   let _tc = { trunk:'', shade:'', mid:'', bright:'', top:'' };
@@ -415,6 +425,24 @@
   });
   document.getElementById('playBtn').addEventListener('click',  e => { e.stopPropagation(); startGame(); });
   document.getElementById('retryBtn').addEventListener('click', e => { e.stopPropagation(); startGame(); });
+  document.getElementById('saveSnapBtn').addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!deathSnap) return;
+    // Mobile: Web Share API saves to gallery via native share sheet
+    if (navigator.canShare) {
+      try {
+        const blob = await fetch(deathSnap).then(r => r.blob());
+        const file = new File([blob], 'gdied-snap.png', { type: 'image/png' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'GDIED' });
+          return;
+        }
+      } catch (_) {}
+    }
+    // Fallback: download
+    const a = document.createElement('a');
+    a.href = deathSnap; a.download = 'gdied-snap.png'; a.click();
+  });
 
 // ── UTILITIES ─────────────────────────────────────────────────────────────────
 
@@ -545,6 +573,17 @@
   function gameOver() {
     if (state === 'gameover') return;
     state = 'gameover'; deathAt = performance.now();
+
+    // Capture snap: game canvas + red death flash composited on top
+    const snap = document.createElement('canvas');
+    snap.width  = canvas.width;
+    snap.height = canvas.height;
+    const sc = snap.getContext('2d');
+    sc.drawImage(canvas, 0, 0);
+    sc.fillStyle = 'rgba(255,0,0,0.55)';
+    sc.fillRect(0, 0, snap.width, snap.height);
+    deathSnap = snap.toDataURL('image/png');
+
     const f = document.getElementById('flash');
     f.classList.remove('flash'); void f.offsetWidth; f.classList.add('flash');
     const isNew = score > best;
