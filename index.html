@@ -253,6 +253,8 @@
   const goatImg  = new Image();
   const knifeImg = new Image();
   const grassImg = new Image();
+  const bakraSnd = new Audio('assets/bakra.mp3');
+  bakraSnd.preload = 'auto';
   let assetsLoaded = 0;
   const onLoad = () => { if (++assetsLoaded === 3) start(); };
   goatImg.onload  = goatImg.onerror  = onLoad;
@@ -573,6 +575,7 @@
   function gameOver() {
     if (state === 'gameover') return;
     state = 'gameover'; deathAt = performance.now();
+    bakraSnd.currentTime = 0; bakraSnd.play().catch(() => {});
 
     // Capture snap: game canvas + HUD panel composited on top (no red flash)
     const snap = document.createElement('canvas');
