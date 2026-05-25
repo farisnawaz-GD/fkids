@@ -71,48 +71,36 @@
     image-rendering: crisp-edges;
   }
 
-  /* HUD score (visible during play) */
+  /* HUD panel (visible during play) */
+  #hud {
+    position: absolute;
+    top: max(3%, calc(env(safe-area-inset-top, 0px) + 8px));
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #fff;
+    border: 3px solid #1c1c1c;
+    box-shadow: 3px 4px 0 #1c1c1c;
+    padding: 6px 16px;
+    pointer-events: none;
+    z-index: 4;
+    transition: opacity .2s;
+    opacity: 0;
+    white-space: nowrap;
+  }
+  #hud.show { opacity: 1; }
   #score {
-    position: absolute;
-    top: max(5%, calc(env(safe-area-inset-top, 0px) + 14px));
-    left: max(5%, calc(env(safe-area-inset-left, 0px) + 14px));
-    font-size: clamp(24px, 7vw, 44px);
-    color: #fff;
-    text-shadow:
-      3px 3px 0 #1c1c1c,
-      -2px -2px 0 #1c1c1c,
-      2px -2px 0 #1c1c1c,
-      -2px 2px 0 #1c1c1c,
-      0 6px 0 rgba(0,0,0,.25);
+    font-size: clamp(18px, 5vw, 26px);
+    color: #1c1c1c;
     letter-spacing: 2px;
-    pointer-events: none;
-    z-index: 4;
-    transition: opacity .2s;
-    opacity: 0;
   }
-  #score.show { opacity: 1; }
   #hud-icon {
-    position: absolute;
-    top: max(4%, calc(env(safe-area-inset-top, 0px) + 10px));
-    right: max(5%, calc(env(safe-area-inset-right, 0px) + 14px));
-    width: clamp(36px, 10vw, 50px);
-    height: auto;
-    pointer-events: none;
-    z-index: 4;
-    transition: opacity .2s;
-    opacity: 0;
-    filter:
-      brightness(0) invert(1)
-      drop-shadow( 3px  0   0 #1c1c1c)
-      drop-shadow(-3px  0   0 #1c1c1c)
-      drop-shadow( 0    3px 0 #1c1c1c)
-      drop-shadow( 0   -3px 0 #1c1c1c)
-      drop-shadow( 2px  2px 0 #1c1c1c)
-      drop-shadow(-2px  2px 0 #1c1c1c)
-      drop-shadow( 2px -2px 0 #1c1c1c)
-      drop-shadow(-2px -2px 0 #1c1c1c);
+    height: clamp(22px, 6vw, 30px);
+    width: auto;
+    display: block;
   }
-  #hud-icon.show { opacity: 1; }
 
   /* overlay screens */
   .screen {
@@ -217,8 +205,10 @@
   <div id="stage">
     <canvas id="game"></canvas>
     <div id="flash"></div>
-    <div id="score">0</div>
-    <img id="hud-icon" src="assets/mono.svg" alt="GD" />
+    <div id="hud">
+      <span id="score">0</span>
+      <img id="hud-icon" src="assets/mono.svg" alt="GD" />
+    </div>
 
     <div id="ready" class="screen show">
       <div class="panel">
@@ -429,10 +419,7 @@
 // ── UTILITIES ─────────────────────────────────────────────────────────────────
 
   function setScreen(id, show) { document.getElementById(id)?.classList.toggle('show', show); }
-  function setScoreVisible(v)  {
-    document.getElementById('score').classList.toggle('show', v);
-    document.getElementById('hud-icon').classList.toggle('show', v);
-  }
+  function setScoreVisible(v)  { document.getElementById('hud').classList.toggle('show', v); }
   function updateScoreText()   { document.getElementById('score').textContent = score; }
   function clamp(v, lo, hi)    { return v < lo ? lo : v > hi ? hi : v; }
   function lc(dr,dg,db, nr,ng,nb, t) {
