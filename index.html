@@ -574,14 +574,47 @@
     if (state === 'gameover') return;
     state = 'gameover'; deathAt = performance.now();
 
-    // Capture snap: game canvas + red death flash composited on top
+    // Capture snap: game canvas + HUD panel composited on top (no red flash)
     const snap = document.createElement('canvas');
     snap.width  = canvas.width;
     snap.height = canvas.height;
     const sc = snap.getContext('2d');
     sc.drawImage(canvas, 0, 0);
-    sc.fillStyle = 'rgba(255,0,0,0.55)';
-    sc.fillRect(0, 0, snap.width, snap.height);
+
+    const stageRect = document.getElementById('stage').getBoundingClientRect();
+    const kx = canvas.width  / stageRect.width;
+    const ky = canvas.height / stageRect.height;
+
+    const hudR  = document.getElementById('hud').getBoundingClientRect();
+    const hx = (hudR.left - stageRect.left) * kx;
+    const hy = (hudR.top  - stageRect.top)  * ky;
+    const hw = hudR.width  * kx;
+    const hh = hudR.height * ky;
+
+    sc.fillStyle = '#1c1c1c';
+    sc.fillRect(hx + 3 * kx, hy + 4 * ky, hw, hh);
+    sc.fillStyle = '#ffffff';
+    sc.fillRect(hx, hy, hw, hh);
+    sc.strokeStyle = '#1c1c1c';
+    sc.lineWidth = 3 * Math.min(kx, ky);
+    sc.strokeRect(hx, hy, hw, hh);
+
+    const scoreR = document.getElementById('score').getBoundingClientRect();
+    sc.fillStyle = '#1c1c1c';
+    sc.font = `${Math.round(scoreR.height * ky * 0.85)}px 'Press Start 2P', monospace`;
+    sc.textAlign = 'left';
+    sc.textBaseline = 'middle';
+    sc.fillText(String(score),
+      (scoreR.left - stageRect.left) * kx,
+      (scoreR.top  - stageRect.top + scoreR.height / 2) * ky);
+
+    const iconEl = document.getElementById('hud-icon');
+    const iconR  = iconEl.getBoundingClientRect();
+    sc.drawImage(iconEl,
+      (iconR.left - stageRect.left) * kx,
+      (iconR.top  - stageRect.top)  * ky,
+      iconR.width * kx, iconR.height * ky);
+
     deathSnap = snap.toDataURL('image/png');
 
     const f = document.getElementById('flash');
