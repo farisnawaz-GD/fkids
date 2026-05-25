@@ -108,7 +108,7 @@
   }
   .screen.show { display: flex; }
   .screen .panel {
-    background: linear-gradient(180deg, #ffffff 0%, #ffffff 100%);
+    background: #ffffff;
     border: 4px solid #1c1c1c;
     box-shadow:
       0 0 0 4px #ffffff,
@@ -275,6 +275,10 @@
   let groundOffset = 0, bobT = 0;
   let nightT = 0, nightTarget = 0;
   let deathAt = 0;
+  let skyGrad = null, skyNightGrad = null, sunGrad = null, moonGrad = null;
+  let _cachedNightT = -1;
+  let _tc = { trunk:'', shade:'', mid:'', bright:'', top:'' };
+  let _cloudFill = '', _cloudShadow = '';
 
   const CLOUD_BLOCKS = [[-26,-6,52,14],[-18,-14,36,10],[-30,2,60,10],[-10,-20,22,8],[12,-12,12,8]];
 
@@ -296,6 +300,7 @@
     canvas.height = Math.round(rect.height * dpr);
     ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
     ctx.imageSmoothingEnabled = true; // goat looks better smooth
+    rebuildGradients();
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 100));
@@ -409,32 +414,66 @@
     return `rgb(${~~(dr+(nr-dr)*t)},${~~(dg+(ng-dg)*t)},${~~(db+(nb-db)*t)})`;
   }
 
+  function rebuildGradients() {
+    const gt = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
+    gt.addColorStop(0, '#ffd000'); gt.addColorStop(0.5, '#ffcf00'); gt.addColorStop(1, '#ffe040');
+    skyGrad = gt;
+    const gn = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
+    gn.addColorStop(0, '#05051e'); gn.addColorStop(0.5, '#0d0d3a'); gn.addColorStop(1, '#1a0f2e');
+    skyNightGrad = gn;
+    const sx = W * 0.78, sy = 80;
+    const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, 110);
+    sg.addColorStop(0, 'rgba(255,255,255,.95)'); sg.addColorStop(0.4, 'rgba(255,255,200,.40)'); sg.addColorStop(1, 'rgba(255,255,180,0)');
+    sunGrad = sg;
+    const mx = W * 0.78, my = 90;
+    const mg = ctx.createRadialGradient(mx, my, 0, mx, my, 80);
+    mg.addColorStop(0, 'rgba(220,220,180,.25)'); mg.addColorStop(1, 'rgba(220,220,180,0)');
+    moonGrad = mg;
+  }
+
+  function updateColorCache() {
+    const nt = nightT;
+    _tc.trunk  = lc(122,74,40,  20,10, 4, nt);
+    _tc.shade  = lc( 55,98,22,   8,18, 4, nt);
+    _tc.mid    = lc( 70,124,32,  12,24, 6, nt);
+    _tc.bright = lc( 86,152,40,  16,30, 8, nt);
+    _tc.top    = lc(108,180,52,  20,38,10, nt);
+    const cv = Math.round(255 + (160 - 255) * nt);
+    const cb = Math.round(255 + (200 - 255) * nt);
+    _cloudFill   = `rgba(${cv},${cv},${cb},${(0.92 + (0.25 - 0.92) * nt).toFixed(2)})`;
+    _cloudShadow = `rgba(200,210,220,${(0.45 * (1 - nt)).toFixed(2)})`;
+    _cachedNightT = nt;
+  }
+
 // ── UPDATE ────────────────────────────────────────────────────────────────────
 
   function update(dt) {
+    const dtN = dt / 16.667;
     bobT += dt;
+
+    if (Math.abs(nightT - _cachedNightT) > 0.005) updateColorCache();
 
     const ns = dt * 0.0006;
     if (nightTarget > nightT) nightT = Math.min(nightT + ns, nightTarget);
     else                      nightT = Math.max(nightT - ns, nightTarget);
 
-    clouds.forEach(c => { c.x -= c.speed; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
-    trees.forEach(t  => { t.x -= PIPE_SPEED * 0.45; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
+    clouds.forEach(c => { c.x -= c.speed * dtN; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
+    trees.forEach(t  => { t.x -= PIPE_SPEED * 0.45 * dtN; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
 
     if (state === 'ready') {
       goat.y   = H * 0.45 + Math.sin(bobT * 0.005) * 10;
       goat.rot = Math.sin(bobT * 0.005) * 0.08;
-      groundOffset = (groundOffset + PIPE_SPEED * 0.5) % 40;
+      groundOffset = (groundOffset + PIPE_SPEED * 0.5 * dtN) % 40;
       return;
     }
 
     if (state === 'playing') {
-      goat.vy  = Math.min(goat.vy + GRAVITY, MAX_FALL);
-      goat.y  += goat.vy;
+      goat.vy  = Math.min(goat.vy + GRAVITY * dtN, MAX_FALL);
+      goat.y  += goat.vy * dtN;
       goat.rot = clamp(goat.vy * 0.06, -0.35, 1.15);
       if (goat.flap > 0) goat.flap = Math.max(0, goat.flap - dt * 0.005);
 
-      pipes.forEach(p => { p.x -= PIPE_SPEED; });
+      pipes.forEach(p => { p.x -= PIPE_SPEED * dtN; });
       const last = pipes[pipes.length - 1];
       if (last.x < W - PIPE_INTERVAL_PX) spawnPipe(last.x + PIPE_INTERVAL_PX);
       pipes = pipes.filter(p => p.x > -PIPE_W - 20);
@@ -451,12 +490,12 @@
         }
       });
 
-      groundOffset = (groundOffset + PIPE_SPEED) % 40;
+      groundOffset = (groundOffset + PIPE_SPEED * dtN) % 40;
 
       if (goat.y + GOAT_HIT_H / 2 >= GROUND_TOP) {
         goat.y = GROUND_TOP - GOAT_HIT_H / 2; gameOver(); return;
       }
-      if (goat.y - GOAT_HIT_H / 2 < 0) { // Ceiling: clamp, don't kill
+      if (goat.y - GOAT_HIT_H / 2 < 0) {
         goat.y = GOAT_HIT_H / 2;
         if (goat.vy < 0) goat.vy = 0;
       }
@@ -482,9 +521,9 @@
 
     if (state === 'gameover') {
       if (goat.y + GOAT_HIT_H / 2 < GROUND_TOP) {
-        goat.vy  = Math.min(goat.vy + GRAVITY, MAX_FALL);
-        goat.y  += goat.vy;
-        goat.rot = clamp(goat.rot + 0.04, -0.35, 1.5);
+        goat.vy  = Math.min(goat.vy + GRAVITY * dtN, MAX_FALL);
+        goat.y  += goat.vy * dtN;
+        goat.rot = clamp(goat.rot + 0.04 * dtN, -0.35, 1.5);
       } else {
         goat.y = GROUND_TOP - GOAT_HIT_H / 2;
       }
@@ -510,29 +549,22 @@
 // ── DRAW ──────────────────────────────────────────────────────────────────────
 
   function drawSky() {
-    const g = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
-    g.addColorStop(0, '#ffd000'); g.addColorStop(0.5, '#ffcf00'); g.addColorStop(1, '#ffe040');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND_TOP);
+    ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, W, GROUND_TOP);
 
     ctx.globalAlpha = 1 - nightT;
-    const sx = W * 0.78, sy = 80;
-    const sun = ctx.createRadialGradient(sx, sy, 0, sx, sy, 110);
-    sun.addColorStop(0, 'rgba(255,255,255,.95)'); sun.addColorStop(0.4, 'rgba(255,255,200,.40)'); sun.addColorStop(1, 'rgba(255,255,180,0)');
-    ctx.fillStyle = sun; ctx.fillRect(0, 0, W, GROUND_TOP);
-    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = sunGrad; ctx.fillRect(0, 0, W, GROUND_TOP);
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(W * 0.78, 80, 26, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
 
     if (nightT > 0) {
       ctx.globalAlpha = nightT;
-      const ng = ctx.createLinearGradient(0, 0, 0, GROUND_TOP);
-      ng.addColorStop(0, '#05051e'); ng.addColorStop(0.5, '#0d0d3a'); ng.addColorStop(1, '#1a0f2e');
-      ctx.fillStyle = ng; ctx.fillRect(0, 0, W, GROUND_TOP);
+      ctx.fillStyle = skyNightGrad; ctx.fillRect(0, 0, W, GROUND_TOP);
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      for (const s of stars) { ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill(); }
+      ctx.beginPath();
+      for (const s of stars) { ctx.moveTo(s.x + s.r, s.y); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); }
+      ctx.fill();
       const mx = W * 0.78, my = 90;
-      const mg = ctx.createRadialGradient(mx, my, 0, mx, my, 80);
-      mg.addColorStop(0, 'rgba(220,220,180,.25)'); mg.addColorStop(1, 'rgba(220,220,180,0)');
-      ctx.fillStyle = mg; ctx.fillRect(0, 0, W, GROUND_TOP);
+      ctx.fillStyle = moonGrad; ctx.fillRect(0, 0, W, GROUND_TOP);
       ctx.fillStyle = '#f0f0d0'; ctx.beginPath(); ctx.arc(mx, my, 26, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgba(160,160,120,0.45)';
       ctx.beginPath(); ctx.arc(mx + 8, my - 6, 7, 0, Math.PI * 2); ctx.fill();
@@ -544,37 +576,28 @@
   function drawCloud(cx, cy, scale) {
     ctx.save();
     ctx.translate(cx, cy); ctx.scale(scale, scale);
-    const cv = Math.round(255 + (160 - 255) * nightT); // r & g channels are identical
-    const cb = Math.round(255 + (200 - 255) * nightT);
-    const ca = (0.92 + (0.25 - 0.92) * nightT).toFixed(2);
-    ctx.fillStyle = `rgba(${cv},${cv},${cb},${ca})`;
+    ctx.fillStyle = _cloudFill;
     CLOUD_BLOCKS.forEach(([x,y,w,h]) => ctx.fillRect(x, y, w, h));
-    ctx.fillStyle = `rgba(200,210,220,${(0.45*(1-nightT)).toFixed(2)})`;
+    ctx.fillStyle = _cloudShadow;
     ctx.fillRect(-30, 8, 60, 4);
     ctx.restore();
   }
 
   function drawTree(tx, scale, type) {
-    const nt      = nightT;
-    const cTrunk  = lc(122,74,40,  20,10, 4, nt);
-    const cShade  = lc( 55,98,22,   8,18, 4, nt);
-    const cMid    = lc( 70,124,32,  12,24, 6, nt);
-    const cBright = lc( 86,152,40,  16,30, 8, nt);
-    const cTop    = lc(108,180,52,  20,38,10, nt);
     ctx.save();
     ctx.translate(tx, GROUND_TOP); ctx.scale(scale, scale);
     if (type === 'bush') {
-      ctx.fillStyle = cTrunk;  ctx.fillRect( -4, -18,  8, 18);
-      ctx.fillStyle = cShade;  ctx.fillRect(-24, -36, 48, 14);
-      ctx.fillStyle = cMid;    ctx.fillRect(-20, -50, 40, 16);
-      ctx.fillStyle = cBright; ctx.fillRect(-14, -60, 28, 12);
-      ctx.fillStyle = cTop;    ctx.fillRect( -8, -68, 16, 10);
+      ctx.fillStyle = _tc.trunk;  ctx.fillRect( -4, -18,  8, 18);
+      ctx.fillStyle = _tc.shade;  ctx.fillRect(-24, -36, 48, 14);
+      ctx.fillStyle = _tc.mid;    ctx.fillRect(-20, -50, 40, 16);
+      ctx.fillStyle = _tc.bright; ctx.fillRect(-14, -60, 28, 12);
+      ctx.fillStyle = _tc.top;    ctx.fillRect( -8, -68, 16, 10);
     } else {
-      ctx.fillStyle = cTrunk;  ctx.fillRect( -5,  -42, 10, 42);
-      ctx.fillStyle = cShade;  ctx.fillRect(-22,  -58, 44, 16);
-      ctx.fillStyle = cMid;    ctx.fillRect(-18,  -72, 36, 16); ctx.fillRect(-14, -84, 28, 14);
-      ctx.fillStyle = cBright; ctx.fillRect(-10,  -94, 20, 12);
-      ctx.fillStyle = cTop;    ctx.fillRect( -6, -104, 12, 12);
+      ctx.fillStyle = _tc.trunk;  ctx.fillRect( -5,  -42, 10, 42);
+      ctx.fillStyle = _tc.shade;  ctx.fillRect(-22,  -58, 44, 16);
+      ctx.fillStyle = _tc.mid;    ctx.fillRect(-18,  -72, 36, 16); ctx.fillRect(-14, -84, 28, 14);
+      ctx.fillStyle = _tc.bright; ctx.fillRect(-10,  -94, 20, 12);
+      ctx.fillStyle = _tc.top;    ctx.fillRect( -6, -104, 12, 12);
     }
     ctx.restore();
   }
@@ -655,6 +678,7 @@
     resize();
     initClouds(); initTrees(); initStars();
     reset();
+    updateColorCache();
     setScreen('ready', true);
     setScoreVisible(false);
     requestAnimationFrame(loop);
