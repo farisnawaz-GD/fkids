@@ -75,8 +75,7 @@
   #score {
     position: absolute;
     top: max(5%, calc(env(safe-area-inset-top, 0px) + 14px));
-    left: 50%;
-    transform: translateX(-50%);
+    left: max(5%, calc(env(safe-area-inset-left, 0px) + 14px));
     font-size: clamp(24px, 7vw, 44px);
     color: #fff;
     text-shadow:
@@ -92,6 +91,27 @@
     opacity: 0;
   }
   #score.show { opacity: 1; }
+  #hud-icon {
+    position: absolute;
+    top: max(4%, calc(env(safe-area-inset-top, 0px) + 10px));
+    right: max(5%, calc(env(safe-area-inset-right, 0px) + 14px));
+    width: clamp(36px, 10vw, 50px);
+    height: auto;
+    pointer-events: none;
+    z-index: 4;
+    transition: opacity .2s;
+    opacity: 0;
+    filter:
+      drop-shadow( 3px  0   0 #fff)
+      drop-shadow(-3px  0   0 #fff)
+      drop-shadow( 0    3px 0 #fff)
+      drop-shadow( 0   -3px 0 #fff)
+      drop-shadow( 2px  2px 0 #fff)
+      drop-shadow(-2px  2px 0 #fff)
+      drop-shadow( 2px -2px 0 #fff)
+      drop-shadow(-2px -2px 0 #fff);
+  }
+  #hud-icon.show { opacity: 1; }
 
   /* overlay screens */
   .screen {
@@ -197,6 +217,7 @@
     <canvas id="game"></canvas>
     <div id="flash"></div>
     <div id="score">0</div>
+    <img id="hud-icon" src="assets/GD_mono.svg" alt="GD" />
 
     <div id="ready" class="screen show">
       <div class="panel">
@@ -407,7 +428,10 @@
 // ── UTILITIES ─────────────────────────────────────────────────────────────────
 
   function setScreen(id, show) { document.getElementById(id)?.classList.toggle('show', show); }
-  function setScoreVisible(v)  { document.getElementById('score').classList.toggle('show', v); }
+  function setScoreVisible(v)  {
+    document.getElementById('score').classList.toggle('show', v);
+    document.getElementById('hud-icon').classList.toggle('show', v);
+  }
   function updateScoreText()   { document.getElementById('score').textContent = score; }
   function clamp(v, lo, hi)    { return v < lo ? lo : v > hi ? hi : v; }
   function lc(dr,dg,db, nr,ng,nb, t) {
