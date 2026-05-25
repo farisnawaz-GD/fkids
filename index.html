@@ -102,14 +102,15 @@
     transition: opacity .2s;
     opacity: 0;
     filter:
-      drop-shadow( 3px  0   0 #fff)
-      drop-shadow(-3px  0   0 #fff)
-      drop-shadow( 0    3px 0 #fff)
-      drop-shadow( 0   -3px 0 #fff)
-      drop-shadow( 2px  2px 0 #fff)
-      drop-shadow(-2px  2px 0 #fff)
-      drop-shadow( 2px -2px 0 #fff)
-      drop-shadow(-2px -2px 0 #fff);
+      brightness(0) invert(1)
+      drop-shadow( 3px  0   0 #1c1c1c)
+      drop-shadow(-3px  0   0 #1c1c1c)
+      drop-shadow( 0    3px 0 #1c1c1c)
+      drop-shadow( 0   -3px 0 #1c1c1c)
+      drop-shadow( 2px  2px 0 #1c1c1c)
+      drop-shadow(-2px  2px 0 #1c1c1c)
+      drop-shadow( 2px -2px 0 #1c1c1c)
+      drop-shadow(-2px -2px 0 #1c1c1c);
   }
   #hud-icon.show { opacity: 1; }
 
@@ -217,7 +218,7 @@
     <canvas id="game"></canvas>
     <div id="flash"></div>
     <div id="score">0</div>
-    <img id="hud-icon" src="assets/GD_mono.svg" alt="GD" />
+    <img id="hud-icon" src="assets/mono.svg" alt="GD" />
 
     <div id="ready" class="screen show">
       <div class="panel">
