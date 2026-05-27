@@ -451,7 +451,7 @@
   }
   window.addEventListener('pointerdown', onPointer, { passive: false });
   document.addEventListener('touchend', e => {
-    if (!e.target.closest('.btn')) e.preventDefault();
+    if (!e.target.closest('.btn,.char-btn')) e.preventDefault();
   }, { passive: false });
   window.addEventListener('keydown', e => {
     if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
