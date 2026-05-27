@@ -285,23 +285,26 @@
 
 // ── ASSETS ────────────────────────────────────────────────────────────────────
 
-  const farisImg   = new Image();
-  const zubaidaImg = new Image();
-  const knifeImg   = new Image();
-  const grassImg   = new Image();
-  const bakraSnd   = new Audio('assets/bakra.mp3');
-  bakraSnd.preload = 'auto';
-  let goatImg      = null;
-  let assetsLoaded = 0;
-  const onLoad = () => { if (++assetsLoaded === 4) start(); };
-  farisImg.onload   = farisImg.onerror   = onLoad;
-  zubaidaImg.onload = zubaidaImg.onerror = onLoad;
-  knifeImg.onload   = knifeImg.onerror   = onLoad;
-  grassImg.onload   = grassImg.onerror   = onLoad;
-  farisImg.src   = 'assets/faris.png';
-  zubaidaImg.src = 'assets/zubaida.png';
-  knifeImg.src   = 'assets/knife.png';
-  grassImg.src   = 'assets/grass.svg';
+  const farisImg    = new Image();
+  const zubaidaImg  = new Image();
+  const zubaidaPImg = new Image();
+  const knifeImg    = new Image();
+  const grassImg    = new Image();
+  const bakraSnd    = new Audio('assets/bakra.mp3');
+  bakraSnd.preload  = 'auto';
+  let goatImg       = null;
+  let assetsLoaded  = 0;
+  const onLoad = () => { if (++assetsLoaded === 5) start(); };
+  farisImg.onload    = farisImg.onerror    = onLoad;
+  zubaidaImg.onload  = zubaidaImg.onerror  = onLoad;
+  zubaidaPImg.onload = zubaidaPImg.onerror = onLoad;
+  knifeImg.onload    = knifeImg.onerror    = onLoad;
+  grassImg.onload    = grassImg.onerror    = onLoad;
+  farisImg.src    = 'assets/faris.png';
+  zubaidaImg.src  = 'assets/zubaida.png';
+  zubaidaPImg.src = 'assets/zubaidaP.png';
+  knifeImg.src    = 'assets/knife.png';
+  grassImg.src    = 'assets/grass.svg';
 
 // ── CANVAS ────────────────────────────────────────────────────────────────────
 
@@ -475,7 +478,7 @@
     state = 'ready';
   }
   document.getElementById('charFaris').addEventListener('click',   e => { e.stopPropagation(); selectChar(farisImg); });
-  document.getElementById('charZubaida').addEventListener('click', e => { e.stopPropagation(); selectChar(zubaidaImg); });
+  document.getElementById('charZubaida').addEventListener('click', e => { e.stopPropagation(); selectChar(zubaidaPImg); });
 
 // ── UTILITIES ─────────────────────────────────────────────────────────────────
 
