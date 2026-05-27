@@ -179,6 +179,42 @@
       inset 0 -4px 0 rgba(0,0,0,.25),
       1px 2px 0 #1c1c1c;
   }
+  /* character select cards */
+  .char-cards {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin: 14px 0 18px;
+  }
+  .char-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: #ffd500;
+    border: 4px solid #1c1c1c;
+    box-shadow: 4px 6px 0 #1c1c1c;
+    padding: 12px 10px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: clamp(8px, 2.6vw, 10px);
+    letter-spacing: 1px;
+    color: #1c1c1c;
+    transition: transform .05s, box-shadow .05s;
+    flex: 1;
+  }
+  .char-btn img {
+    width: clamp(64px, 18vw, 80px);
+    height: clamp(64px, 18vw, 80px);
+    object-fit: contain;
+    image-rendering: pixelated;
+    display: block;
+  }
+  .char-btn:active {
+    transform: translate(3px, 4px);
+    box-shadow: 1px 2px 0 #1c1c1c;
+  }
+
   /* flash on death */
   #flash {
     position: absolute;
@@ -203,7 +239,24 @@
       <span id="score">0</span>
     </div>
 
-    <div id="ready" class="screen show">
+    <div id="charselect" class="screen show">
+      <div class="panel">
+        <h1>FKIDS</h1>
+        <h2>Choose your character</h2>
+        <div class="char-cards">
+          <button class="char-btn" id="charFaris">
+            <img src="assets/faris.png" alt="Faris" />
+            FARIS
+          </button>
+          <button class="char-btn" id="charZubaida">
+            <img src="assets/zubaida.png" alt="Zubaida" />
+            ZUBAIDA
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="ready" class="screen">
       <div class="panel">
         <h1>FKIDS</h1>
         <h2>Mind the knives</h2>
@@ -232,19 +285,23 @@
 
 // ── ASSETS ────────────────────────────────────────────────────────────────────
 
-  const goatImg  = new Image();
-  const knifeImg = new Image();
-  const grassImg = new Image();
-  const bakraSnd = new Audio('assets/bakra.mp3');
+  const farisImg   = new Image();
+  const zubaidaImg = new Image();
+  const knifeImg   = new Image();
+  const grassImg   = new Image();
+  const bakraSnd   = new Audio('assets/bakra.mp3');
   bakraSnd.preload = 'auto';
+  let goatImg      = null;
   let assetsLoaded = 0;
-  const onLoad = () => { if (++assetsLoaded === 3) start(); };
-  goatImg.onload  = goatImg.onerror  = onLoad;
-  knifeImg.onload = knifeImg.onerror = onLoad;
-  grassImg.onload = grassImg.onerror = onLoad;
-  goatImg.src  = 'assets/goat.png';
-  knifeImg.src = 'assets/knife.png';
-  grassImg.src = 'assets/grass.svg';
+  const onLoad = () => { if (++assetsLoaded === 4) start(); };
+  farisImg.onload   = farisImg.onerror   = onLoad;
+  zubaidaImg.onload = zubaidaImg.onerror = onLoad;
+  knifeImg.onload   = knifeImg.onerror   = onLoad;
+  grassImg.onload   = grassImg.onerror   = onLoad;
+  farisImg.src   = 'assets/faris.png';
+  zubaidaImg.src = 'assets/zubaida.png';
+  knifeImg.src   = 'assets/knife.png';
+  grassImg.src   = 'assets/grass.svg';
 
 // ── CANVAS ────────────────────────────────────────────────────────────────────
 
@@ -268,7 +325,7 @@
   let H         = 711; // recomputed in resize()
   let GROUND_TOP = H - GROUND_H;
 
-  let state  = 'ready';
+  let state  = 'charselect';
   let score  = 0;
   let best   = (() => {
     try { return parseInt(localStorage.getItem('flappyGoatBest') || '0', 10) || 0; }
@@ -362,6 +419,7 @@
 // ── INPUT ─────────────────────────────────────────────────────────────────────
 
   function flap() {
+    if (state === 'charselect') return;
     if (state === 'ready') {
       setScreen('ready', false);
       setScoreVisible(true);
@@ -400,14 +458,24 @@
   // bfcache restores JS state mid-game — fully reset to ready screen
   window.addEventListener('pageshow', e => {
     if (e.persisted) {
-      reset(); state = 'ready';
-      setScreen('gameover', false);
-      setScreen('ready',    true);
+      reset(); state = 'charselect';
+      setScreen('gameover',   false);
+      setScreen('ready',      false);
+      setScreen('charselect', true);
       setScoreVisible(false);
     }
   });
   document.getElementById('playBtn').addEventListener('click',  e => { e.stopPropagation(); startGame(); });
   document.getElementById('retryBtn').addEventListener('click', e => { e.stopPropagation(); startGame(); });
+
+  function selectChar(img) {
+    goatImg = img;
+    setScreen('charselect', false);
+    setScreen('ready', true);
+    state = 'ready';
+  }
+  document.getElementById('charFaris').addEventListener('click',   e => { e.stopPropagation(); selectChar(farisImg); });
+  document.getElementById('charZubaida').addEventListener('click', e => { e.stopPropagation(); selectChar(zubaidaImg); });
 
 // ── UTILITIES ─────────────────────────────────────────────────────────────────
 
@@ -464,6 +532,11 @@
 
     clouds.forEach(c => { c.x -= c.speed * dtN; if (c.x < -60) { c.x = W + 60; c.y = 40 + Math.random() * (GROUND_TOP - 200); }});
     trees.forEach(t  => { t.x -= PIPE_SPEED * 0.45 * dtN; if (t.x < -90) { t.x = W + 60 + Math.random() * 80; t.scale = 0.55 + Math.random() * 0.55; t.type = Math.random() < 0.35 ? 'bush' : 'tall'; }});
+
+    if (state === 'charselect') {
+      groundOffset = (groundOffset + PIPE_SPEED * 0.5 * dtN) % 40;
+      return;
+    }
 
     if (state === 'ready') {
       goat.y   = H * 0.45 + Math.sin(bobT * 0.005) * 10;
@@ -667,7 +740,7 @@
     drawClouds();
     drawPipes();
     drawGround();
-    drawGoat();
+    if (goatImg) drawGoat();
   }
 
 // ── LOOP ──────────────────────────────────────────────────────────────────────
@@ -686,7 +759,7 @@
     initClouds(); initTrees(); initStars();
     reset();
     updateColorCache();
-    setScreen('ready', true);
+    setScreen('charselect', true);
     setScoreVisible(false);
     requestAnimationFrame(loop);
   }
